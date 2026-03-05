@@ -57,6 +57,10 @@ npm run lint       # ESLint
 npm run start      # Production server
 ```
 
+## Design System
+
+@docs/styleguide.md
+
 ## Product Context
 
 @docs/PRD.md
