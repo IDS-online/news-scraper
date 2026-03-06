@@ -9,7 +9,22 @@ const config: Config = {
   ],
   theme: {
   	extend: {
+  		fontFamily: {
+  			sans: ['Nunito Sans', 'Trebuchet MS', 'Arial', 'sans-serif'],
+  		},
   		colors: {
+  			ids: {
+  				orange: '#FEB13D',
+  				'orange-real': '#F39200',
+  				pink: '#FE4768',
+  				dark: '#2E3538',
+  				navy: '#193C4D',
+  				slate: '#5D737E',
+  				grey: '#8F9CA3',
+  				light: '#D8E1E5',
+  				ice: '#EEF4F6',
+  				offwhite: '#F9FBFC',
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
