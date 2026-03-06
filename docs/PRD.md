@@ -25,6 +25,7 @@ Newsgrap3r ist eine Web-Applikation, die automatisiert News-Artikel von konfigur
 | P0 (MVP) | Scraping Scheduler & Deduplizierung | Planned |
 | P0 (MVP) | News REST API | Planned |
 | P0 (MVP) | News Dashboard UI | Planned |
+| P0 (MVP) | Artikel-Review-Ansicht (Quellen-Detail & Verwaltung) | Planned |
 
 ## Success Metrics
 - Mindestens 10 konfigurierte News-Quellen laufen stabil ohne manuelle Eingriffe

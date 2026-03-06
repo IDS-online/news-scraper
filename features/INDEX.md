@@ -19,7 +19,8 @@
 | PROJ-5 | Scraping Scheduler & Deduplizierung | Planned | [PROJ-5-scraping-scheduler.md](PROJ-5-scraping-scheduler.md) | 2026-03-05 |
 | PROJ-6 | News REST API | Planned | [PROJ-6-news-rest-api.md](PROJ-6-news-rest-api.md) | 2026-03-05 |
 | PROJ-7 | News Dashboard UI | Planned | [PROJ-7-news-dashboard-ui.md](PROJ-7-news-dashboard-ui.md) | 2026-03-05 |
+| PROJ-8 | Artikel-Review-Ansicht (Quellen-Detail & Verwaltung) | Planned | [PROJ-8-article-review-view.md](PROJ-8-article-review-view.md) | 2026-03-06 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: PROJ-8
+## Next Available ID: PROJ-9
