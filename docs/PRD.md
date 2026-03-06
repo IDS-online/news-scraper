@@ -29,6 +29,7 @@ Newsgrap3r ist eine Web-Applikation, die automatisiert News-Artikel von konfigur
 | P0 (MVP) | Kategorie-Verwaltung | Planned |
 | P0 (MVP) | Quellen-Erweiterung (Slug, Basis-Kategorie & Kategorie-Mapping) | Planned |
 | P0 (MVP) | Automatische Kategorisierung via LLM | Planned |
+| P1 | Automatische Artikel-Löschung (Retention Policy) | Planned |
 
 ## Success Metrics
 - Mindestens 10 konfigurierte News-Quellen laufen stabil ohne manuelle Eingriffe
