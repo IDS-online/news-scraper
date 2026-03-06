@@ -42,8 +42,8 @@ All features tracked in `features/INDEX.md`. Every skill reads it at start and u
 
 ## Key Conventions
 
-- **Feature IDs:** PROJ-1, PROJ-2, etc. (sequential)
-- **Commits:** `feat(PROJ-X): description`, `fix(PROJ-X): description`
+- **Feature IDs:** NEWS-1, NEWS-2, etc. (sequential)
+- **Commits:** `feat(NEWS-X): description`, `fix(NEWS-X): description`
 - **Single Responsibility:** One feature per spec file
 - **shadcn/ui first:** NEVER create custom versions of installed shadcn components
 - **Human-in-the-loop:** All workflows have user approval checkpoints

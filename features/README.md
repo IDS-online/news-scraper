@@ -3,12 +3,12 @@
 Dieser Ordner enthält detaillierte Feature Specs vom Requirements Engineer.
 
 ## Naming Convention
-`PROJ-X-feature-name.md`
+`NEWS-X-feature-name.md`
 
 Beispiele:
-- `PROJ-1-user-authentication.md`
-- `PROJ-2-kanban-board.md`
-- `PROJ-3-file-attachments.md`
+- `NEWS-1-user-authentication.md`
+- `NEWS-2-kanban-board.md`
+- `NEWS-3-file-attachments.md`
 
 ## Was gehört in eine Feature Spec?
 
@@ -77,7 +77,7 @@ Am Ende des Feature-Dokuments fügt QA die Test-Ergebnisse hinzu:
 **Status:** ✅ Deployed
 **Deployed:** 2026-01-13
 **Production URL:** https://your-app.vercel.app
-**Git Tag:** v1.0.0-PROJ-1
+**Git Tag:** v1.0.0-NEWS-1
 ```
 
 ## Workflow
@@ -94,7 +94,7 @@ Am Ende des Feature-Dokuments fügt QA die Test-Ergebnisse hinzu:
 
 Feature-Status wird direkt im Feature-Dokument getrackt:
 ```markdown
-# PROJ-1: Feature Name
+# NEWS-1: Feature Name
 
 **Status:** 🔵 Planned | 🟡 In Progress | ✅ Deployed
 **Created:** 2026-01-12
@@ -108,5 +108,5 @@ Feature-Status wird direkt im Feature-Dokument getrackt:
 
 **Git als Single Source of Truth:**
 - Alle Implementierungs-Details sind in Git Commits
-- `git log --grep="PROJ-1"` zeigt alle Änderungen für dieses Feature
+- `git log --grep="NEWS-1"` zeigt alle Änderungen für dieses Feature
 - Keine separate FEATURE_CHANGELOG.md nötig!
