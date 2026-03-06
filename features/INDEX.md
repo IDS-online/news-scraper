@@ -24,7 +24,8 @@
 | NEWS-10 | Quellen-Erweiterung (Slug, Basis-Kategorie & Kategorie-Mapping) | Planned | [NEWS-10-source-extensions.md](NEWS-10-source-extensions.md) | 2026-03-06 |
 | NEWS-11 | Automatische Kategorisierung via LLM | Planned | [NEWS-11-auto-categorization.md](NEWS-11-auto-categorization.md) | 2026-03-06 |
 | NEWS-12 | Automatische Artikel-Löschung (Retention Policy) | Planned | [NEWS-12-article-retention.md](NEWS-12-article-retention.md) | 2026-03-06 |
+| NEWS-13 | Statistik-Dashboard (Quellen-Übersicht & Verlauf) | Planned | [NEWS-13-statistics-dashboard.md](NEWS-13-statistics-dashboard.md) | 2026-03-06 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: NEWS-13
+## Next Available ID: NEWS-14
