@@ -29,7 +29,7 @@ export interface ScrapeResult {
 export interface ScrapeError {
   source_id: string
   message: string
-  code: 'NETWORK_ERROR' | 'TIMEOUT' | 'HTTP_ERROR' | 'PARSE_ERROR' | 'INVALID_FEED' | 'UNKNOWN'
+  code: 'NETWORK_ERROR' | 'TIMEOUT' | 'HTTP_ERROR' | 'PARSE_ERROR' | 'INVALID_FEED' | 'SIZE_LIMIT' | 'UNKNOWN'
   http_status?: number
   timestamp: string // ISO 8601
 }
