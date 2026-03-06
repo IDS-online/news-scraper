@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
@@ -49,8 +50,18 @@ export default function DashboardHeader({ email, role }: DashboardHeaderProps) {
       <div className="container mx-auto px-4 max-w-7xl">
         <div className="flex items-center justify-between h-14">
           {/* Brand */}
-          <Link href="/dashboard" className="text-xl font-bold shrink-0">
-            News<span className="text-ids-orange">grap3r</span>
+          <Link href="/dashboard" className="flex items-center gap-2.5 shrink-0">
+            <Image
+              src="/ids-logo.svg"
+              alt="ids.online logo"
+              width={60}
+              height={20}
+              className="h-5 w-auto"
+              priority
+            />
+            <span className="text-xl font-bold">
+              News<span className="text-ids-orange">grap3r</span>
+            </span>
           </Link>
 
           {/* Desktop nav */}
