@@ -45,3 +45,19 @@ Admins können News-Quellen (URLs) anlegen, bearbeiten, deaktivieren und lösche
 - User-seitiges Anlegen von Quellen (nur Admin)
 - Import/Export von Quellen als CSV
 - Quellen-Gruppen oder Tags (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Tabelle:** `sources` — enthält alle Quellen-Konfigurationen inkl. CSS-Selektoren und später Slug/Retention (NEWS-10/12).
+
+**API-Routen:** `POST/GET /api/sources`, `GET/PUT/DELETE /api/sources/[id]` (Admin-only für Schreiben)
+
+**Frontend:** `/dashboard/admin/sources` (Liste + CRUD), Formular mit konditionellen Feldern (CSS-Selektoren nur bei Typ HTML)
+
+**RLS:** Lesen für alle eingeloggten User. Schreiben nur für `admin`-Rolle.
+
+**Validierung:** Zod-Schema auf Server (URL-Format, Intervall ≥ 5, CSS-Selector-Felder nur bei HTML-Typ)
+
+**Neue Packages:** Keine

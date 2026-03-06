@@ -49,3 +49,17 @@ Eine serverseitige Engine, die beliebige HTML-Nachrichtenseiten via CSS-Selektor
 - JavaScript-Rendering via Headless Browser (v2)
 - Automatisches Erkennen von CSS-Selektoren
 - Vollständigen Artikel-Text von der Detailseite scrapen (nur Teaser/Listing-Seite)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Implementierung:** Server-seitige TypeScript-Funktion in `src/lib/scraping/html-engine.ts` — wird vom Scheduler (NEWS-5) aufgerufen.
+
+**HTML-Parsing:** `cheerio` npm-Package (jQuery-artiges DOM-Parsing für Node.js, kein Browser nötig)
+
+**HTTP-Abruf:** Native `fetch` mit 15s Timeout, User-Agent `Newsgrap3r/1.0`, folgt bis zu 3 Redirects
+
+**Output:** Identisches normalisiertes Format wie NEWS-3 — Scheduler und Datenbank unterscheiden nicht zwischen RSS und HTML nach dem Parsing.
+
+**Neue Packages:** `cheerio`

@@ -73,3 +73,19 @@ Nach dem Scraping und der Mapping-Auflösung (NEWS-10) analysiert ein LLM (Claud
 - Re-Kategorisierung bestehender Artikel nach Kategorie-Änderung (v2)
 - Konfidenz-Score pro Kategorie-Zuordnung (v2)
 - Anderes LLM als Claude (konfigurierbar) (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Implementierung:** `src/lib/categorization/llm-categorizer.ts` — wird vom Scheduler (NEWS-5) nach dem Artikel-Insert aufgerufen.
+
+**Claude API:** `@anthropic-ai/sdk`, Modell `claude-haiku-4-5-20251001`. Structured Output via JSON-Mode: System-Prompt definiert Format, User-Prompt enthält Artikel-Batch + Kategorienliste.
+
+**Batch-Strategie:** 10 Artikel pro API-Call. Prompt enthält alle Kategorien (Name + Beschreibung) einmal, dann alle 10 Artikel als nummerierte Liste. Antwort: `{ "1": ["Kategorie A"], "2": [], "3": ["Kategorie B", "Kategorie C"], ... }`
+
+**Ergebnis-Speicherung:** `article_categories` (n:m). `articles.categorization_status` = `done` / `failed` / `skipped`.
+
+**Halluzinations-Schutz:** LLM-Antwort wird gegen bekannte Kategorie-Namen validiert — unbekannte Namen werden ignoriert.
+
+**Neue Packages:** `@anthropic-ai/sdk`

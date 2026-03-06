@@ -57,6 +57,10 @@ npm run lint       # ESLint
 npm run start      # Production server
 ```
 
+## System Architecture
+
+@docs/architecture.md
+
 ## Design System
 
 @docs/styleguide.md

@@ -44,3 +44,19 @@ Nutzer können sich registrieren, einloggen und ausloggen. Es gibt zwei Rollen: 
 - OAuth / Social Login (v2)
 - Zwei-Faktor-Authentifizierung (v2)
 - Nutzer können eigene Rollen ändern (niemals)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Tabellen:** `profiles` (id, email, role, created_at) — erweitert `auth.users`
+
+**Authentifizierung:** Supabase Auth (Email/Passwort). Nach Login liefert Supabase einen JWT, der bei allen API-Aufrufen im `Authorization`-Header mitgesendet wird.
+
+**Rollen:** `profiles.role` = `admin` | `user`. Admin-Zuweisung manuell via Supabase Dashboard oder SQL.
+
+**Schutz:** Next.js Middleware liest JWT und leitet unautorisierte Requests auf `/login` um. Admin-Routen prüfen zusätzlich die Rolle aus `profiles`.
+
+**Seiten:** `/login`, `/register` (öffentlich) — alle anderen Seiten unter `/dashboard/*` (geschützt)
+
+**Neue Packages:** Keine (Supabase SDK bereits im Starter-Kit)

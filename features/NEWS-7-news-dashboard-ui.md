@@ -63,3 +63,17 @@ Ein Web-Dashboard mit News-Feed, Filteroptionen und Admin-Bereich zur Quellen-Ve
 - Push-Benachrichtigungen bei neuen Artikeln (v2)
 - Dark Mode (v2)
 - Mehrsprachige UI (die UI ist auf Deutsch/Englisch, die NEWS sind mehrsprachig)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Seite:** `/dashboard/news` — Client-Komponente mit Filterstate in URL-Parametern (shareable Links)
+
+**Artikel laden:** Custom Hook `useArticles()` ruft `/api/articles` mit aktiven Filtern auf. Debounce auf Suche (300ms).
+
+**Layout:** `AppSidebar` (shadcn Sidebar) + `DashboardHeader` mit User-Menü. Responsive via shadcn Sheet für Mobile.
+
+**Artikel-Karte:** `ArticleCard.tsx` — nutzt shadcn `Card`, `Badge`, `Button`. Bild via `next/image` mit `onError`-Placeholder.
+
+**Neue Packages:** Keine

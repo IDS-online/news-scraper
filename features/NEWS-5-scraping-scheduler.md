@@ -51,3 +51,19 @@ Ein Scheduler-System, das pro Quelle einen Cron-Job ausführt. Jeder Job ruft di
 - Job-Queue mit Priorisierung (v2)
 - Scraping-Statistiken / Metriken-Dashboard (v2)
 - Benachrichtigungen bei dauerhaft fehlgeschlagenen Jobs (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Cron-Trigger:** Vercel Cron Job ruft `POST /api/cron/scrape` alle 15 Minuten auf. Der Endpunkt prüft welche aktiven Quellen gemäß ihrem `interval_minutes` fällig sind.
+
+**Absicherung:** `CRON_SECRET` Environment Variable — Vercel sendet diesen als Header, unautorisierte Calls werden abgewiesen.
+
+**Ablauf pro Quelle:** Engine aufrufen → Deduplizierung (URL-Vergleich gegen DB) → Artikel speichern (status: `pending`) → LLM-Kategorisierung (NEWS-11) → `sources.last_scraped_at` aktualisieren
+
+**Concurrency-Schutz:** `sources.last_scraped_at` wird zu Beginn des Jobs gesetzt (optimistic lock) — zweiter gleichzeitiger Job für dieselbe Quelle erkennt den laufenden Job und überspringt.
+
+**Manueller Trigger:** `POST /api/sources/[id]/scrape` (Admin only) — ruft denselben Job-Code direkt auf.
+
+**Neue Packages:** Keine (nutzt NEWS-3/4 intern)

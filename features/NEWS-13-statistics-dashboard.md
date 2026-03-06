@@ -93,3 +93,17 @@ Ein dediziertes Statistik-Dashboard, das auf einen Blick zeigt, wie aktiv jede N
 - E-Mail-Report mit Wochenstatistiken (v2)
 - Vergleich zwischen zwei Quellen nebeneinander (v2)
 - Echtzeit-Updates via WebSocket (v2 — Polling mit manuellem Reload reicht für v1)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Datenabruf:** `GET /api/stats/sources` — gibt pro Quelle die Artikel-Anzahl für aktuelle KW, KW-1, KW-2, aktueller Monat und Gesamt zurück. Datenbankabfrage nutzt PostgreSQL `date_trunc` und `extract(week from ...)` für Kalenderwochen (ISO 8601).
+
+**Charts:** `recharts` npm-Package. `BarChart` für Verlauf (12 Wochen). `Sparkline` (mini BarChart) direkt in der Tabellenspalte.
+
+**Expand-Grafik:** Klick auf Sparkline öffnet shadcn `Dialog` mit größerem `BarChart` der Quelle (12 Wochen).
+
+**Performance:** Statistik-Query aggregiert direkt in PostgreSQL — keine N+1-Queries. Bei > 50 Quellen optional mit `unstable_cache` (Next.js) für 5-Minuten-Cache.
+
+**Neue Packages:** `recharts`

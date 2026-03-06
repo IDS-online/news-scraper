@@ -65,3 +65,19 @@ Das Quellen-Formular (NEWS-2) wird um drei Felder erweitert:
 - Automatisches Erkennen der Quellen-Kategorien ohne Konfiguration
 - Slug nachträglich ändern ohne Auswirkung auf bestehende Artikel (Slug-Change ist breaking — muss bewusst gemacht werden)
 - Mapping via Regex-Pattern statt exaktem String-Match (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Tabellen-Erweiterungen an `sources`:** `slug` (unique text), `default_category_id` (FK → categories, nullable), `selector_category` (nullable), `retention_days` (nullable int)
+
+**Neue Tabelle:** `source_category_mappings` (id, source_id, source_category_raw, category_id)
+
+**Frontend:** Erweiterung des bestehenden Quellen-Formulars (NEWS-2) um die drei neuen Abschnitte. Kategorie-Mapping als dynamische Zeilen-Tabelle (`FieldArray` via react-hook-form).
+
+**Slug-Autogenerierung:** Client-seitige Funktion: Quellen-Name → Kleinbuchstaben, Leerzeichen → `-`, Umlaute umschreiben, Sonderzeichen entfernen. Manuell überschreibbar.
+
+**Mapping-Auflösung:** Im Scheduler (NEWS-5) nach dem Scraping — `source_category_raw` des Artikels gegen `source_category_mappings` matchen → `article_categories` befüllen.
+
+**Neue Packages:** Keine

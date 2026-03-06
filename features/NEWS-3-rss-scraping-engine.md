@@ -43,3 +43,17 @@ Eine serverseitige Engine, die RSS 2.0 und Atom 1.0 Feeds von konfigurierten Que
 - HTML-Seiten scrapen (das ist NEWS-4)
 - Artikel in die Datenbank speichern (das ist NEWS-5)
 - Feed-Validierung oder Vorschau in der UI
+
+---
+
+## Tech Design (Solution Architect)
+
+**Implementierung:** Server-seitige TypeScript-Funktion in `src/lib/scraping/rss-engine.ts` — kein eigener API-Endpunkt, wird vom Scheduler (NEWS-5) aufgerufen.
+
+**RSS-Parsing:** `rss-parser` npm-Package (unterstützt RSS 2.0 + Atom 1.0, Encoding-Handling, Redirects)
+
+**Output:** Normalisiertes Array `{ title, url, description, image_url, source_category_raw, published_at, source_id, language }`
+
+**Spracherkennung:** `franc` npm-Package (Auto-Detect) oder fest konfigurierter Sprachcode aus der Quelle
+
+**Neue Packages:** `rss-parser`, `franc`

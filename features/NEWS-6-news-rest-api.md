@@ -57,3 +57,19 @@ Eine authentifizierte REST API (Next.js API Routes), über die eingeloggte Nutze
 - Webhook-Subscriptions für neue Artikel (v2)
 - GraphQL (v2)
 - API-Keys als Alternative zu JWT (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Implementierung:** Next.js App Router API Routes (`src/app/api/articles/route.ts`, etc.)
+
+**Auth:** Jeder Request prüft `Authorization: Bearer <JWT>` via Supabase Server Client. Ungültige/fehlende Tokens → 401.
+
+**Paginierung:** `?page=1&limit=20` — serverseitig via `.range()` auf Supabase Query. Antwort enthält `{ data, total, page, limit }`.
+
+**Filter:** `source_id`, `language`, `category_id`, `from`, `to` — alle via Supabase Query-Builder zusammengebaut. `search` via Postgres `ILIKE` auf `articles.title`.
+
+**Performance:** Indexes auf `articles.source_id`, `articles.published_at`, `articles.language` sichern schnelle Abfragen unter 300ms.
+
+**Neue Packages:** Keine

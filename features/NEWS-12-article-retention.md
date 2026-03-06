@@ -63,3 +63,17 @@ Admins können pro Newsquelle eine Aufbewahrungsfrist (Retention Period) in Tage
 - Manuelle Löschung mehrerer Artikel über die UI (v2 — außer Einzel-Löschen in NEWS-8)
 - E-Mail-Benachrichtigung nach Löschlauf (v2)
 - Wiederherstellung gelöschter Artikel (niemals — hartes Löschen)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Tabellen:** `system_settings` (key/value für `retention_enabled`), `retention_log` (id, source_id, deleted_count, run_at)
+
+**Tabellen-Erweiterung `sources`:** `retention_days` (nullable int) — bereits im Schema von NEWS-10 berücksichtigt.
+
+**Cron-Trigger:** `POST /api/cron/retention` täglich um 03:00 UTC (Vercel Cron). Prüft zuerst `system_settings.retention_enabled = 'true'` — bei `false` sofortiger Exit.
+
+**Admin-UI:** `/dashboard/admin/settings` — shadcn `Switch` für globalen Schalter + Anzeige des letzten Log-Eintrags aus `retention_log`.
+
+**Neue Packages:** Keine

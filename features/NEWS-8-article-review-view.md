@@ -87,3 +87,17 @@ Eine quellenspezifische Review-Ansicht, die es Nutzern ermöglicht, die gescrapp
 - Bulk-Delete (mehrere Artikel gleichzeitig)
 - Artikel als "geprüft" markieren (v2)
 - Export der Artikel-Liste als CSV (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Seiten:** `/dashboard/sources` (Quellen-Übersicht) + `/dashboard/sources/[id]/articles` (Artikel-Detail)
+
+**Ansichts-Toggle:** Zustand in `localStorage` (`view-mode: 'list' | 'grid'`). Komponente `ViewToggle.tsx` mit shadcn `Tabs` oder zwei Icon-Buttons.
+
+**Kachelansicht:** CSS Grid (3/2/1 Spalten), Bild via `next/image` mit `aspect-ratio: 16/9`, `object-fit: cover`. Löschen-Button als absolut positioniertes Icon-Overlay (nur Admin, erscheint on hover).
+
+**Artikel löschen:** `DELETE /api/articles/[id]` (Admin only) → optimistisches UI-Update (Artikel sofort aus Liste entfernt), Bestätigungsdialog via shadcn `AlertDialog`.
+
+**Neue Packages:** Keine

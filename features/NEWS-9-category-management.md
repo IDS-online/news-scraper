@@ -51,3 +51,19 @@ Die Beschreibung ist der wichtigste Input für die KI-Kategorisierung. Sie sollt
 - Kategorie-Icons oder Farben (v2)
 - Kategorien für User-Self-Service sichtbar machen (nur intern)
 - Manuelle Kategorie-Zuweisung an einzelne Artikel (v2)
+
+---
+
+## Tech Design (Solution Architect)
+
+**Tabelle:** `categories` (id, name, description, created_at, updated_at)
+
+**API-Routen:** `GET/POST /api/categories`, `PUT/DELETE /api/categories/[id]`
+
+**Frontend:** `/dashboard/categories` — shadcn `Table` mit inline Edit-/Löschen-Buttons (nur Admin). Formular als shadcn `Dialog` oder eigene Seite.
+
+**Artikel-Zählung:** `SELECT COUNT(*) FROM article_categories WHERE category_id = ?` — wird im Kategorien-Listing als berechnete Spalte angezeigt.
+
+**RLS:** Lesen für alle eingeloggten User. Schreiben nur für `admin`.
+
+**Neue Packages:** Keine
