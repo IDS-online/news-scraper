@@ -26,6 +26,9 @@ Newsgrap3r ist eine Web-Applikation, die automatisiert News-Artikel von konfigur
 | P0 (MVP) | News REST API | Planned |
 | P0 (MVP) | News Dashboard UI | Planned |
 | P0 (MVP) | Artikel-Review-Ansicht (Quellen-Detail & Verwaltung) | Planned |
+| P0 (MVP) | Kategorie-Verwaltung | Planned |
+| P0 (MVP) | Quellen-Erweiterung (Slug, Basis-Kategorie & Kategorie-Mapping) | Planned |
+| P0 (MVP) | Automatische Kategorisierung via LLM | Planned |
 
 ## Success Metrics
 - Mindestens 10 konfigurierte News-Quellen laufen stabil ohne manuelle Eingriffe
@@ -41,7 +44,7 @@ Newsgrap3r ist eine Web-Applikation, die automatisiert News-Artikel von konfigur
 - Team: Kleines Team, iterative Entwicklung
 
 ## Non-Goals
-- Kein automatisches Kategorisieren oder KI-Zusammenfassungen von Artikeln (v1)
+- Keine KI-Zusammenfassungen von Artikeln (v1)
 - Keine Mobile App (nur responsive Web)
 - Kein eigener User-Self-Service für Quellen (nur Admin verwaltet Quellen)
 - Kein Bezahl-/Subscription-Modell

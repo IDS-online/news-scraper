@@ -20,7 +20,10 @@
 | NEWS-6 | News REST API | Planned | [NEWS-6-news-rest-api.md](NEWS-6-news-rest-api.md) | 2026-03-05 |
 | NEWS-7 | News Dashboard UI | Planned | [NEWS-7-news-dashboard-ui.md](NEWS-7-news-dashboard-ui.md) | 2026-03-05 |
 | NEWS-8 | Artikel-Review-Ansicht (Quellen-Detail & Verwaltung) | Planned | [NEWS-8-article-review-view.md](NEWS-8-article-review-view.md) | 2026-03-06 |
+| NEWS-9 | Kategorie-Verwaltung | Planned | [NEWS-9-category-management.md](NEWS-9-category-management.md) | 2026-03-06 |
+| NEWS-10 | Quellen-Erweiterung (Slug, Basis-Kategorie & Kategorie-Mapping) | Planned | [NEWS-10-source-extensions.md](NEWS-10-source-extensions.md) | 2026-03-06 |
+| NEWS-11 | Automatische Kategorisierung via LLM | Planned | [NEWS-11-auto-categorization.md](NEWS-11-auto-categorization.md) | 2026-03-06 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: NEWS-9
+## Next Available ID: NEWS-12
