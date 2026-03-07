@@ -225,4 +225,8 @@ The 2026-03-06 QA report contained 4 bug findings that were all inaccurate based
 - **Recommendation:** Deploy. All 3 bugs are low-severity cosmetic/edge-case issues that do not affect core functionality. Fix at leisure.
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-03-07
+**Tag:** v1.18.0
+**Branch:** main → origin/main (pushed)
+**Vercel:** Auto-deploy triggered on push to main

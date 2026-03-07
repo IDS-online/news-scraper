@@ -218,4 +218,8 @@ This feature uses only packages already installed:
 - ✅ Unexpected errors caught with 500 + console.error
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-03-07
+**Tag:** v1.18.0
+**Branch:** main → origin/main (pushed)
+**Vercel:** Auto-deploy triggered on push to main

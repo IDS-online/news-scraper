@@ -544,4 +544,8 @@ No new packages required. The proxy endpoint uses Node's built-in `fetch` (avail
 - **Production Ready:** YES
 
 ## Deployment
-_To be added by /deploy_
+
+**Deployed:** 2026-03-07
+**Tag:** v1.18.0
+**Branch:** main → origin/main (pushed)
+**Vercel:** Auto-deploy triggered on push to main
