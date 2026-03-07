@@ -22,6 +22,7 @@ CREATE TABLE articles (
   published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
   -- Categorization (NEWS-10 raw category from feed, NEWS-11 LLM status)
+  category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
   source_category_raw TEXT,
   categorization_status TEXT NOT NULL DEFAULT 'pending'
     CHECK (categorization_status IN ('pending', 'done', 'failed', 'skipped')),
