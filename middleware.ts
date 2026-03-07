@@ -33,6 +33,10 @@ export async function middleware(request: NextRequest) {
   const isProtectedApi = pathname.startsWith('/api') && !pathname.startsWith('/api/auth')
 
   if ((isProtectedDashboard || isProtectedApi) && !user) {
+    // API routes: return 401 JSON (not a redirect — non-browser consumers need JSON)
+    if (isProtectedApi) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const loginUrl = request.nextUrl.clone()
     loginUrl.pathname = '/login'
     return NextResponse.redirect(loginUrl)

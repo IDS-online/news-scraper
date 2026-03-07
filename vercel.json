@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/scrape",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/retention",
+      "schedule": "0 3 * * *"
     }
   ]
 }
