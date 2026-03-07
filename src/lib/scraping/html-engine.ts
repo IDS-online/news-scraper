@@ -11,7 +11,71 @@ const MAX_REDIRECTS = 3
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5 MB
 const USER_AGENT = 'Newsgrap3r/1.0 (+https://github.com/newsgrap3r)'
 
+// ---- Public types ----
+
+/**
+ * Lightweight config for preview/dry-run scraping.
+ * Contains only the fields needed by the scraping logic — no DB record required.
+ */
+export interface HtmlScrapeConfig {
+  url: string
+  language?: string
+  selector_container: string
+  selector_title: string
+  selector_link: string
+  selector_description?: string | null
+  selector_date?: string | null
+  selector_category?: string | null
+  selector_image?: string | null
+}
+
 // ---- Public API ----
+
+/**
+ * Perform a dry-run HTML scrape using an inline config (no Source record needed).
+ * Returns up to `limit` articles. Does NOT write to the database.
+ * This function never throws — all errors are captured in the result.
+ */
+export async function scrapeHtmlPreview(
+  config: HtmlScrapeConfig,
+  limit: number = 5
+): Promise<ScrapeResult> {
+  // Build a minimal Source-like object for the existing scraping logic
+  const pseudoSource: Source = {
+    id: 'preview',
+    name: 'Preview',
+    url: config.url,
+    type: 'html',
+    language: config.language ?? 'auto',
+    interval_minutes: 15,
+    is_active: true,
+    slug: null,
+    default_category_id: null,
+    default_category: null,
+    retention_days: null,
+    selector_container: config.selector_container,
+    selector_title: config.selector_title,
+    selector_link: config.selector_link,
+    selector_description: config.selector_description ?? null,
+    selector_date: config.selector_date ?? null,
+    selector_category: config.selector_category ?? null,
+    selector_image: config.selector_image ?? null,
+    scraping_in_progress: false,
+    last_scraped_at: null,
+    last_error: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }
+
+  const result = await scrapeHtmlPage(pseudoSource)
+
+  // Limit the number of returned articles
+  if (result.articles.length > limit) {
+    result.articles = result.articles.slice(0, limit)
+  }
+
+  return result
+}
 
 /**
  * Fetch an HTML page and extract articles using CSS selectors from the source config.
@@ -138,6 +202,22 @@ export async function scrapeHtmlPage(source: Source): Promise<ScrapeResult> {
         }
       }
 
+      // Extract image URL — optional
+      let imageUrl: string | null = null
+      if (source.selector_image) {
+        const imgEl = $container.find(source.selector_image)
+        if (imgEl.length > 0) {
+          const src = imgEl.attr('src') ?? imgEl.attr('data-src') ?? imgEl.attr('data-lazy-src')
+          if (src) {
+            try {
+              imageUrl = new URL(src, baseUrl.origin).toString()
+            } catch {
+              imageUrl = src
+            }
+          }
+        }
+      }
+
       // Detect language
       const language = detectLanguage(source, $)
 
@@ -145,7 +225,7 @@ export async function scrapeHtmlPage(source: Source): Promise<ScrapeResult> {
         title,
         url: normalizedUrl,
         description,
-        image_url: null, // HTML scraping does not extract images in v1
+        image_url: imageUrl,
         source_category_raw: categoryRaw,
         published_at: publishedAt,
         source_id: source.id,
@@ -224,11 +304,39 @@ async function fetchHtml(url: string, sourceId: string, timestamp: string): Prom
       chunks.push(value)
     }
 
-    const decoder = new TextDecoder('utf-8')
-    return decoder.decode(concatUint8Arrays(chunks, totalSize))
+    const rawBytes = concatUint8Arrays(chunks, totalSize)
+
+    // Detect charset from Content-Type header or meta tag
+    const contentType = response.headers.get('content-type') ?? ''
+    let charset = detectCharset(contentType, rawBytes)
+
+    const decoder = new TextDecoder(charset, { fatal: false, ignoreBOM: false })
+    return decoder.decode(rawBytes)
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+/**
+ * Detect charset from Content-Type header or HTML meta tags.
+ * Falls back to UTF-8.
+ */
+function detectCharset(contentType: string, bytes: Uint8Array): string {
+  // 1. Try Content-Type header: charset=windows-1252 or charset=iso-8859-1
+  const headerMatch = contentType.match(/charset=["']?([a-zA-Z0-9_-]+)/i)
+  if (headerMatch) return headerMatch[1]
+
+  // 2. Scan the first 2KB of the HTML for a meta charset declaration
+  const preview = new TextDecoder('ascii', { fatal: false }).decode(bytes.slice(0, 2048))
+
+  // <meta charset="windows-1252"> or <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+  const metaMatch =
+    preview.match(/<meta[^>]+charset=["']?([a-zA-Z0-9_-]+)/i) ??
+    preview.match(/charset=["']?([a-zA-Z0-9_-]+)/i)
+
+  if (metaMatch) return metaMatch[1]
+
+  return 'utf-8'
 }
 
 /**
