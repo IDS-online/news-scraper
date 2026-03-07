@@ -1,6 +1,7 @@
 'use client'
 
-import { ExternalLink, Globe, Calendar } from 'lucide-react'
+import { useState } from 'react'
+import { ExternalLink, Globe, Calendar, Newspaper } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { Article } from '@/hooks/use-articles'
@@ -63,6 +64,7 @@ function getRelativeTime(dateStr: string | null): string {
 }
 
 export default function ArticleCard({ article }: ArticleCardProps) {
+  const [imgError, setImgError] = useState(false)
   const languageLabel = article.language
     ? LANGUAGE_LABELS[article.language.toLowerCase()] ?? article.language.toUpperCase()
     : null
@@ -70,7 +72,23 @@ export default function ArticleCard({ article }: ArticleCardProps) {
   return (
     <Card className="group transition-shadow hover:shadow-md border-ids-light bg-white">
       <CardContent className="p-4">
-        <div className="flex flex-col gap-2">
+        <div className="flex gap-3">
+          {/* Thumbnail */}
+          <div className="shrink-0 w-[60px] h-[60px] rounded-md overflow-hidden bg-ids-ice flex items-center justify-center">
+            {article.image_url && !imgError ? (
+              <img
+                src={article.image_url}
+                alt=""
+                loading="lazy"
+                className="w-full h-full object-cover"
+                onError={() => setImgError(true)}
+              />
+            ) : (
+              <Newspaper className="h-5 w-5 text-ids-grey" />
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 flex-1 min-w-0">
           {/* Top row: source + language + category + time */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {article.source_name && (
@@ -127,6 +145,7 @@ export default function ArticleCard({ article }: ArticleCardProps) {
               {article.description}
             </p>
           )}
+          </div>
         </div>
       </CardContent>
     </Card>

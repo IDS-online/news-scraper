@@ -1,6 +1,6 @@
 # NEWS-3: RSS/Atom Feed Scraping Engine
 
-**Status:** Planned
+**Status:** In Progress
 **Priority:** P0 (MVP)
 **Created:** 2026-03-05
 

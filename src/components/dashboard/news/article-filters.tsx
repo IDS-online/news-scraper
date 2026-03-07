@@ -18,6 +18,11 @@ interface Source {
   name: string
 }
 
+interface Category {
+  id: string
+  name: string
+}
+
 interface ArticleFiltersProps {
   filters: FilterValues
   onFilterChange: (filters: Partial<Omit<FilterValues, 'page' | 'limit'>>) => void
@@ -44,8 +49,9 @@ export default function ArticleFilters({
 }: ArticleFiltersProps) {
   const [sources, setSources] = useState<Source[]>([])
   const [sourcesLoading, setSourcesLoading] = useState(true)
+  const [categories, setCategories] = useState<Category[]>([])
 
-  // Fetch sources for the dropdown
+  // Fetch sources and categories for the dropdowns
   useEffect(() => {
     async function loadSources() {
       try {
@@ -53,7 +59,7 @@ export default function ArticleFilters({
         if (res.ok) {
           const json = await res.json()
           setSources(
-            (json.sources ?? []).map((s: { id: string; name: string }) => ({
+            (json.data ?? []).map((s: { id: string; name: string }) => ({
               id: s.id,
               name: s.name,
             }))
@@ -65,16 +71,29 @@ export default function ArticleFilters({
         setSourcesLoading(false)
       }
     }
+    async function loadCategories() {
+      try {
+        const res = await fetch('/api/categories')
+        if (res.ok) {
+          const json = await res.json()
+          setCategories(json.categories ?? [])
+        }
+      } catch {
+        // Silently fail
+      }
+    }
     loadSources()
+    loadCategories()
   }, [])
 
-  const hasActiveFilters = !!(filters.source_id || filters.language || filters.search)
+  const hasActiveFilters = !!(filters.source_id || filters.language || filters.search || filters.category_id || filters.from || filters.to)
 
   function clearFilters() {
     onFilterChange({
       source_id: undefined,
       language: undefined,
       search: undefined,
+      category_id: undefined,
       from: undefined,
       to: undefined,
     })
@@ -137,6 +156,28 @@ export default function ArticleFilters({
             ))}
           </SelectContent>
         </Select>
+
+        {/* Category filter */}
+        {categories.length > 0 && (
+          <Select
+            value={filters.category_id ?? '__all__'}
+            onValueChange={(val) =>
+              onFilterChange({ category_id: val === '__all__' ? undefined : val })
+            }
+          >
+            <SelectTrigger className="h-9 w-full sm:w-[160px] bg-white border-ids-light text-sm" aria-label="Nach Kategorie filtern">
+              <SelectValue placeholder="Alle Kategorien" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">Alle Kategorien</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Clear filters */}
         {hasActiveFilters && (

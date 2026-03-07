@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { Newspaper, AlertCircle, SearchX } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -8,8 +9,14 @@ import ArticleCard from '@/components/dashboard/news/article-card'
 import ArticleCardSkeleton from '@/components/dashboard/news/article-card-skeleton'
 import ArticleFilters from '@/components/dashboard/news/article-filters'
 import ArticlePagination from '@/components/dashboard/news/article-pagination'
+import ViewToggle, { type ViewMode } from '@/components/dashboard/sources/articles/view-toggle'
+import ArticleGridCard from '@/components/dashboard/sources/articles/article-grid-card'
+
+const VIEW_MODE_KEY = 'newsgrap3r-view-mode'
 
 export default function ArticleFeed() {
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
+
   const {
     articles,
     total,
@@ -23,16 +30,41 @@ export default function ArticleFeed() {
     refetch,
   } = useArticles()
 
-  const hasActiveFilters = !!(filters.source_id || filters.language || filters.search)
+  // Restore view mode from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY)
+      if (stored === 'list' || stored === 'grid') {
+        setViewMode(stored)
+      }
+    } catch {
+      // localStorage may not be available
+    }
+  }, [])
+
+  // Persist view mode to localStorage
+  function handleViewModeChange(mode: ViewMode) {
+    setViewMode(mode)
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode)
+    } catch {
+      // silently fail
+    }
+  }
+
+  const hasActiveFilters = !!(filters.source_id || filters.language || filters.search || filters.category_id || filters.from || filters.to)
 
   return (
     <div className="space-y-4">
-      {/* Page heading */}
-      <div>
-        <h1 className="text-xl font-bold text-ids-dark">News-Feed</h1>
-        <p className="text-sm text-ids-slate mt-0.5">
-          Aktuelle Artikel aus allen konfigurierten Quellen
-        </p>
+      {/* Page heading with view toggle */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-ids-dark">News-Feed</h1>
+          <p className="text-sm text-ids-slate mt-0.5">
+            Aktuelle Artikel aus allen konfigurierten Quellen
+          </p>
+        </div>
+        <ViewToggle mode={viewMode} onChange={handleViewModeChange} />
       </div>
 
       {/* Filters */}
@@ -61,11 +93,19 @@ export default function ArticleFeed() {
         </Alert>
       )}
 
-      {/* Loading state */}
+      {/* Loading state - adapts to current view mode */}
       {isLoading && !error && (
-        <div className="grid grid-cols-1 gap-3" role="status" aria-label="Artikel werden geladen">
+        <div
+          className={
+            viewMode === 'grid'
+              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
+              : 'grid grid-cols-1 gap-3'
+          }
+          role="status"
+          aria-label="Artikel werden geladen"
+        >
           {Array.from({ length: 6 }).map((_, i) => (
-            <ArticleCardSkeleton key={i} />
+            <ArticleCardSkeleton key={i} variant={viewMode} />
           ))}
         </div>
       )}
@@ -92,6 +132,7 @@ export default function ArticleFeed() {
                     source_id: undefined,
                     language: undefined,
                     search: undefined,
+                    category_id: undefined,
                     from: undefined,
                     to: undefined,
                   })
@@ -117,14 +158,26 @@ export default function ArticleFeed() {
         </div>
       )}
 
-      {/* Article list */}
+      {/* Article list / grid */}
       {!isLoading && !error && articles.length > 0 && (
         <>
-          <div className="grid grid-cols-1 gap-3">
-            {articles.map((article) => (
-              <ArticleCard key={article.id} article={article} />
-            ))}
-          </div>
+          {viewMode === 'list' ? (
+            <div className="grid grid-cols-1 gap-3">
+              {articles.map((article) => (
+                <ArticleCard key={article.id} article={article} />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {articles.map((article) => (
+                <ArticleGridCard
+                  key={article.id}
+                  article={article}
+                  isAdmin={false}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Pagination */}
           <ArticlePagination

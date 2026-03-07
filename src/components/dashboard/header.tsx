@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, LogOut, Newspaper, Settings, BarChart2, Tags, Menu, X } from 'lucide-react'
+import { ChevronDown, LogOut, Newspaper, Settings, SlidersHorizontal, BarChart2, Tags, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface DashboardHeaderProps {
@@ -29,6 +29,7 @@ const navLinks = [
 
 const adminLinks = [
   { href: '/dashboard/sources', label: 'Quellen', icon: Settings },
+  { href: '/dashboard/settings', label: 'Einstellungen', icon: SlidersHorizontal },
 ]
 
 export default function DashboardHeader({ email, role }: DashboardHeaderProps) {
