@@ -29,6 +29,7 @@ export async function POST(
 
     console.log(`[ManualScrape] Triggering scrape for source ${id}`)
     const result = await scrapeSourceById(id)
+    console.log(`[ManualScrape] Result:`, JSON.stringify(result))
 
     if (result.skipped_reason) {
       return NextResponse.json(

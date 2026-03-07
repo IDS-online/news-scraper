@@ -32,6 +32,7 @@ const sourceBaseFields = {
   selector_description: z.string().max(500).nullable().optional(),
   selector_date: z.string().max(500).nullable().optional(),
   selector_category: z.string().max(500).nullable().optional(),
+  selector_image: z.string().max(500).nullable().optional(),
 
   // NEWS-10: Slug, default category, retention
   slug: z.string()
@@ -64,6 +65,7 @@ export const updateSourceSchema = z.object({
   selector_description: sourceBaseFields.selector_description,
   selector_date: sourceBaseFields.selector_date,
   selector_category: sourceBaseFields.selector_category,
+  selector_image: sourceBaseFields.selector_image,
   slug: sourceBaseFields.slug,
   default_category_id: sourceBaseFields.default_category_id,
   retention_days: sourceBaseFields.retention_days,

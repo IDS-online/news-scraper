@@ -31,6 +31,7 @@ export interface ArticleFilters {
   source_id?: string
   language?: string
   search?: string
+  category_id?: string
   from?: string
   to?: string
   page: number
@@ -60,6 +61,7 @@ export function useArticles(initialFilters?: Partial<ArticleFilters>): UseArticl
     source_id: initialFilters?.source_id,
     language: initialFilters?.language,
     search: initialFilters?.search,
+    category_id: initialFilters?.category_id,
     from: initialFilters?.from,
     to: initialFilters?.to,
   })
@@ -110,6 +112,7 @@ export function useArticles(initialFilters?: Partial<ArticleFilters>): UseArticl
     if (filters.source_id) params.set('source_id', filters.source_id)
     if (filters.language) params.set('language', filters.language)
     if (debouncedSearch) params.set('search', debouncedSearch)
+    if (filters.category_id) params.set('category_id', filters.category_id)
     if (filters.from) params.set('from', filters.from)
     if (filters.to) params.set('to', filters.to)
 
@@ -136,7 +139,7 @@ export function useArticles(initialFilters?: Partial<ArticleFilters>): UseArticl
         setIsLoading(false)
       }
     }
-  }, [filters.page, filters.limit, filters.source_id, filters.language, debouncedSearch, filters.from, filters.to])
+  }, [filters.page, filters.limit, filters.source_id, filters.language, debouncedSearch, filters.category_id, filters.from, filters.to])
 
   useEffect(() => {
     fetchArticles()

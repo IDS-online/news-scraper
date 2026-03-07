@@ -1,6 +1,6 @@
 # NEWS-8: Artikel-Review-Ansicht (Quellen-Detail & Verwaltung)
 
-**Status:** Planned
+**Status:** In Progress
 **Priority:** P0 (MVP)
 **Created:** 2026-03-06
 

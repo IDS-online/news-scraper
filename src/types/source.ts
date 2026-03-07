@@ -16,6 +16,7 @@ export interface Source {
   selector_description: string | null
   selector_date: string | null
   selector_category: string | null
+  selector_image: string | null
   scraping_in_progress: boolean
   last_scraped_at: string | null
   last_error: string | null
@@ -24,7 +25,7 @@ export interface Source {
 }
 
 export interface SourcesResponse {
-  sources: Source[]
+  data: Source[]
   pagination: {
     page: number
     pageSize: number
@@ -36,4 +37,12 @@ export interface SourcesResponse {
 export interface Category {
   id: string
   name: string
+}
+
+export interface SourceCategoryMapping {
+  id: string
+  source_category_raw: string
+  category_id: string
+  category: { id: string; name: string } | null
+  created_at: string
 }

@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      sources,
+      data: sources,
       pagination: {
         page,
         pageSize: PAGE_SIZE,

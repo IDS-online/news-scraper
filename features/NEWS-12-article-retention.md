@@ -1,6 +1,6 @@
 # NEWS-12: Automatische Artikel-Löschung (Retention Policy)
 
-**Status:** Planned
+**Status:** In Review
 **Priority:** P1 (nach MVP)
 **Created:** 2026-03-06
 
