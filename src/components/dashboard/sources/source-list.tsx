@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -33,6 +35,8 @@ import {
   ChevronRight,
   RefreshCw,
   Settings,
+  FileText,
+  Wand2,
 } from 'lucide-react'
 import SourceFormDialog from './source-form-dialog'
 import SourceDeleteDialog from './source-delete-dialog'
@@ -90,6 +94,7 @@ function SourceTableSkeleton() {
 }
 
 export default function SourceList({ isAdmin }: SourceListProps) {
+  const searchParams = useSearchParams()
   const [sources, setSources] = useState<Source[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 })
@@ -103,11 +108,17 @@ export default function SourceList({ isAdmin }: SourceListProps) {
   // Dialogs
   const [formOpen, setFormOpen] = useState(false)
   const [editingSource, setEditingSource] = useState<Source | null>(null)
+  const [prefillName, setPrefillName] = useState<string | undefined>()
+  const [prefillUrl, setPrefillUrl] = useState<string | undefined>()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingSource, setDeletingSource] = useState<Source | null>(null)
 
   // Track toggle-in-progress per source ID
   const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set())
+
+  // Track scrape-in-progress per source ID + result message
+  const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set())
+  const [scrapeResult, setScrapeResult] = useState<{ id: string; message: string; ok: boolean } | null>(null)
 
   const fetchSources = useCallback(
     async (page = 1) => {
@@ -126,7 +137,7 @@ export default function SourceList({ isAdmin }: SourceListProps) {
         }
 
         const data: SourcesResponse = await res.json()
-        setSources(data.sources)
+        setSources(data.data)
         setPagination({
           page: data.pagination.page,
           totalPages: data.pagination.totalPages,
@@ -160,6 +171,18 @@ export default function SourceList({ isAdmin }: SourceListProps) {
   useEffect(() => {
     fetchCategories()
   }, [fetchCategories])
+
+  // Auto-open the form dialog pre-filled when arriving from the wizard fallback link
+  useEffect(() => {
+    if (isAdmin && searchParams.get('action') === 'new') {
+      const url = searchParams.get('url') ?? undefined
+      const name = searchParams.get('name') ?? undefined
+      setPrefillUrl(url)
+      setPrefillName(name)
+      setEditingSource(null)
+      setFormOpen(true)
+    }
+  }, [isAdmin, searchParams])
 
   async function handleToggleActive(source: Source) {
     setTogglingIds((prev) => new Set(prev).add(source.id))
@@ -195,6 +218,37 @@ export default function SourceList({ isAdmin }: SourceListProps) {
   function handleDelete(source: Source) {
     setDeletingSource(source)
     setDeleteDialogOpen(true)
+  }
+
+  async function handleScrapeNow(source: Source) {
+    setScrapingIds((prev) => new Set(prev).add(source.id))
+    setScrapeResult(null)
+
+    try {
+      const res = await fetch(`/api/sources/${source.id}/scrape`, { method: 'POST' })
+      const data = await res.json()
+
+      const errors: string[] = data.result?.errors ?? []
+      const detail = errors.length > 0 ? ` — ${errors[0]}` : ''
+      setScrapeResult({
+        id: source.id,
+        message: (data.message ?? (res.ok ? 'Scraping abgeschlossen' : data.error ?? 'Fehler')) + detail,
+        ok: res.ok || res.status === 207,
+      })
+
+      // Refresh the list so last_scraped_at updates
+      if (res.ok || res.status === 207) {
+        fetchSources(pagination.page)
+      }
+    } catch {
+      setScrapeResult({ id: source.id, message: 'Netzwerkfehler beim Scrapen', ok: false })
+    } finally {
+      setScrapingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(source.id)
+        return next
+      })
+    }
   }
 
   function handleCreate() {
@@ -235,10 +289,18 @@ export default function SourceList({ isAdmin }: SourceListProps) {
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           {isAdmin && (
-            <Button size="sm" onClick={handleCreate}>
-              <Plus className="h-4 w-4 mr-1.5" />
-              Neue Quelle
-            </Button>
+            <>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/dashboard/sources/new/visual">
+                  <Wand2 className="h-4 w-4 mr-1.5" />
+                  Visuell einrichten
+                </Link>
+              </Button>
+              <Button size="sm" onClick={handleCreate}>
+                <Plus className="h-4 w-4 mr-1.5" />
+                Neue Quelle
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -320,6 +382,20 @@ export default function SourceList({ isAdmin }: SourceListProps) {
         </Card>
       )}
 
+      {/* Scrape result banner */}
+      {scrapeResult && (
+        <Card className={scrapeResult.ok ? 'border-green-500/50 bg-green-50/50' : 'border-destructive/50 bg-destructive/5'}>
+          <CardContent className="flex items-center justify-between py-3 px-4">
+            <p className={`text-sm font-medium ${scrapeResult.ok ? 'text-green-700' : 'text-destructive'}`}>
+              {scrapeResult.message}
+            </p>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setScrapeResult(null)}>
+              ✕
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Data table */}
       {!loading && !error && sources.length > 0 && (
         <Card>
@@ -339,7 +415,7 @@ export default function SourceList({ isAdmin }: SourceListProps) {
                       <TableHead className="hidden md:table-cell">Intervall</TableHead>
                       <TableHead>Aktiv</TableHead>
                       <TableHead className="hidden lg:table-cell">Letzter Scrape</TableHead>
-                      {isAdmin && <TableHead className="text-right">Aktionen</TableHead>}
+                      <TableHead className="text-right">{isAdmin ? 'Aktionen' : ''}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -347,9 +423,13 @@ export default function SourceList({ isAdmin }: SourceListProps) {
                       <TableRow key={source.id}>
                         <TableCell>
                           <div className="space-y-0.5">
-                            <p className="font-medium text-sm truncate max-w-[220px]">
+                            <Link
+                              href={`/dashboard/sources/${source.id}/articles`}
+                              className="font-medium text-sm truncate max-w-[220px] block hover:text-ids-navy hover:underline underline-offset-2 transition-colors"
+                              title={`Artikel von ${source.name} anzeigen`}
+                            >
                               {source.name}
-                            </p>
+                            </Link>
                             {source.slug && (
                               <p className="text-xs text-muted-foreground">/{source.slug}</p>
                             )}
@@ -416,30 +496,62 @@ export default function SourceList({ isAdmin }: SourceListProps) {
                             {formatDate(source.last_scraped_at)}
                           </span>
                         </TableCell>
-                        {isAdmin && (
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleEdit(source)}
-                                aria-label={`${source.name} bearbeiten`}
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              asChild
+                            >
+                              <Link
+                                href={`/dashboard/sources/${source.id}/articles`}
+                                aria-label={`Artikel von ${source.name} anzeigen`}
                               >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                onClick={() => handleDelete(source)}
-                                aria-label={`${source.name} loeschen`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        )}
+                                <FileText className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                            {isAdmin && (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => handleScrapeNow(source)}
+                                      disabled={scrapingIds.has(source.id)}
+                                      aria-label={`${source.name} jetzt scrapen`}
+                                    >
+                                      <RefreshCw className={`h-4 w-4 ${scrapingIds.has(source.id) ? 'animate-spin' : ''}`} />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p className="text-xs">Jetzt scrapen</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEdit(source)}
+                                  aria-label={`${source.name} bearbeiten`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => handleDelete(source)}
+                                  aria-label={`${source.name} loeschen`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -490,6 +602,8 @@ export default function SourceList({ isAdmin }: SourceListProps) {
             source={editingSource}
             categories={categories}
             onSuccess={handleFormSuccess}
+            initialName={!editingSource ? prefillName : undefined}
+            initialUrl={!editingSource ? prefillUrl : undefined}
           />
           <SourceDeleteDialog
             open={deleteDialogOpen}
