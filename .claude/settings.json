@@ -16,7 +16,33 @@
       "Bash(kill:*)",
       "Bash(npx shadcn@latest add:*)",
       "Bash(ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(mv PROJ-1-user-authentication.md NEWS-1-user-authentication.md)",
+      "Bash(mv PROJ-2-news-source-management.md NEWS-2-news-source-management.md)",
+      "Bash(mv PROJ-3-rss-scraping-engine.md NEWS-3-rss-scraping-engine.md)",
+      "Bash(mv PROJ-4-html-dom-scraping-engine.md NEWS-4-html-dom-scraping-engine.md)",
+      "Bash(mv PROJ-5-scraping-scheduler.md NEWS-5-scraping-scheduler.md)",
+      "Bash(mv PROJ-6-news-rest-api.md NEWS-6-news-rest-api.md)",
+      "Bash(mv PROJ-7-news-dashboard-ui.md NEWS-7-news-dashboard-ui.md)",
+      "Bash(mv PROJ-8-article-review-view.md NEWS-8-article-review-view.md)",
+      "Bash(git -C /Users/michaelmollath/projects/news-scraper log --oneline -S \"CREATE TABLE\" -10)",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__apply_migration",
+      "Bash(git -C /Users/michaelmollath/projects/news-scraper ls-files src/app/api/)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(curl -s http://localhost:3000/dashboard/sources)",
+      "Bash(curl -sv http://localhost:3000/dashboard/sources)",
+      "mcp__supabase__execute_sql",
+      "Bash(npx next lint --dir src)",
+      "Bash(npx next lint src)",
+      "Bash(git add sql/003-articles.sql src/lib/scraping/scheduler.ts src/app/api/cron/ src/app/api/sources/[id]/scrape/ vercel.json src/types/source.ts package.json package-lock.json)",
+      "Bash(git -C /Users/michaelmollath/projects/news-scraper log --oneline -S \"CREATE TABLE\" -20)",
+      "Skill(requirements)",
+      "Skill(requirements:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/michaelmollath/projects/news-scraper/src/app/api/sources/[id]",
+      "/Users/michaelmollath/projects/news-scraper/src/app/api/articles"
     ]
   }
 }
