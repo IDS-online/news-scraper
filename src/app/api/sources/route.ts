@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
     if (authErr.status && authErr.error) {
       return NextResponse.json({ error: authErr.error }, { status: authErr.status })
     }
+    console.error('Unexpected error in GET /api/sources:', err)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
       selector_link: input.type === 'html' ? (input.selector_link ?? null) : null,
       selector_description: input.type === 'html' ? (input.selector_description ?? null) : null,
       selector_date: input.type === 'html' ? (input.selector_date ?? null) : null,
+      selector_image: input.type === 'html' ? (input.selector_image ?? null) : null,
       selector_category: input.selector_category ?? null,
     }
 
@@ -136,6 +138,7 @@ export async function POST(request: NextRequest) {
     if (authErr.status && authErr.error) {
       return NextResponse.json({ error: authErr.error }, { status: authErr.status })
     }
+    console.error('Unexpected error in POST /api/sources:', err)
     return NextResponse.json({ error: 'Interner Serverfehler' }, { status: 500 })
   }
 }
