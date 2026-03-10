@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth'
 import { scrapeSourceById } from '@/lib/scraping/scheduler'
 
+// Allow up to 60 seconds for scraping (feed fetch + DB operations)
+export const maxDuration = 60
+
 type RouteParams = { params: Promise<{ id: string }> }
 
 /**

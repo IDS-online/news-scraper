@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runScheduledScrape } from '@/lib/scraping/scheduler'
 
+// Allow up to 60 seconds for scraping multiple sources
+export const maxDuration = 60
+
 /**
  * POST /api/cron/scrape
  *
