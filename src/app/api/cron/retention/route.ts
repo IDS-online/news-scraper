@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Retention can delete across many sources — allow up to 60 seconds.
+export const maxDuration = 60
+
 /**
  * POST /api/cron/retention
  * Daily retention job — deletes articles older than each source's retention_days.
@@ -100,4 +103,14 @@ export async function POST(request: Request) {
     total_deleted,
     log,
   })
+}
+
+/**
+ * GET /api/cron/retention
+ *
+ * Vercel Cron triggers jobs with a GET request. Delegate to POST so the
+ * scheduled run reaches the same handler (mirrors /api/cron/scrape).
+ */
+export async function GET(request: Request) {
+  return POST(request)
 }
