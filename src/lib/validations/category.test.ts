@@ -42,19 +42,17 @@ describe('createCategorySchema', () => {
     expect(result.description).toBe(validCategory.description)
   })
 
-  it('checks the minimum length before trimming, so padding can satisfy it', () => {
-    // description: z.string().min(20, ...).trim() — the chain applies the
-    // min-length check on the raw string first, then trims. A string that is
-    // only long enough because of surrounding whitespace therefore still
-    // passes, and the trimmed result can end up shorter than the minimum.
+  it('applies the minimum length after trimming', () => {
     const result = createCategorySchema.safeParse({
       name: 'Test',
       description: `  ${'a'.repeat(19)}  `,
     })
-    expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.description.length).toBe(19)
-    }
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects a whitespace-only name', () => {
+    const result = createCategorySchema.safeParse({ ...validCategory, name: '   ' })
+    expect(result.success).toBe(false)
   })
 })
 
