@@ -380,7 +380,7 @@ class SizeLimitError extends Error {
  * Resolve a relative URL against a base URL.
  * If the raw href is already absolute, return it as-is.
  */
-function resolveUrl(rawHref: string, baseUrl: URL): string {
+export function resolveUrl(rawHref: string, baseUrl: URL): string {
   try {
     // new URL will succeed for absolute URLs; for relative ones it will throw
     return new URL(rawHref, baseUrl.origin).toString()
@@ -393,7 +393,7 @@ function resolveUrl(rawHref: string, baseUrl: URL): string {
 /**
  * Normalize a URL: remove trailing slashes from path, keep query params.
  */
-function normalizeUrl(raw: string): string {
+export function normalizeUrl(raw: string): string {
   try {
     const url = new URL(raw)
     url.pathname = url.pathname.replace(/\/+$/, '') || '/'
@@ -414,7 +414,7 @@ function normalizeUrl(raw: string): string {
  *
  * Returns ISO 8601 string or null if unparseable.
  */
-function parseDate(raw: string): string | null {
+export function parseDate(raw: string): string | null {
   if (!raw) return null
 
   // First try native Date parse for well-formatted ISO strings

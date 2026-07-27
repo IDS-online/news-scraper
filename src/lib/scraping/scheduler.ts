@@ -125,7 +125,7 @@ export async function scrapeSourceById(sourceId: string): Promise<SchedulerResul
 /**
  * Check if a source is due for scraping based on its interval_minutes.
  */
-function isSourceDue(source: { last_scraped_at: string | null; interval_minutes: number }): boolean {
+export function isSourceDue(source: { last_scraped_at: string | null; interval_minutes: number }): boolean {
   if (!source.last_scraped_at) {
     // Never scraped before — it's due
     return true
@@ -327,7 +327,7 @@ async function deduplicateArticles(
  * Normalize a URL for case-insensitive comparison.
  * Lowercase and remove trailing slashes.
  */
-function normalizeUrlForComparison(url: string): string {
+export function normalizeUrlForComparison(url: string): string {
   try {
     const parsed = new URL(url.toLowerCase())
     parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/'
