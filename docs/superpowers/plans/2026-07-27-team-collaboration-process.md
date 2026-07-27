@@ -271,11 +271,11 @@ Create `supabase/seed.sql`:
 
 insert into categories (id, name, description)
 values
-  ('11111111-1111-1111-1111-111111111111', 'Technologie',
+  ('11111111-1111-4111-8111-111111111111', 'Technologie',
    'Nachrichten zu Software, Hardware, IT-Sicherheit und digitaler Infrastruktur.'),
-  ('22222222-2222-2222-2222-222222222222', 'Wirtschaft',
+  ('22222222-2222-4222-8222-222222222222', 'Wirtschaft',
    'Berichte zu Unternehmen, Maerkten, Finanzen und Konjunktur.'),
-  ('33333333-3333-3333-3333-333333333333', 'Politik',
+  ('33333333-3333-4333-8333-333333333333', 'Politik',
    'Innen- und aussenpolitische Berichterstattung sowie Gesetzgebung.')
 on conflict (id) do nothing;
 
@@ -283,15 +283,15 @@ insert into sources (
   id, name, slug, url, type, language, interval_minutes, is_active, default_category_id
 )
 values
-  ('aaaaaaaa-0000-0000-0000-000000000001', 'heise online', 'heise-online',
+  ('aaaaaaaa-0000-4000-8000-000000000001', 'heise online', 'heise-online',
    'https://www.heise.de/rss/heise-atom.xml', 'rss', 'de', 30, true,
-   '11111111-1111-1111-1111-111111111111'),
-  ('aaaaaaaa-0000-0000-0000-000000000002', 'tagesschau', 'tagesschau',
+   '11111111-1111-4111-8111-111111111111'),
+  ('aaaaaaaa-0000-4000-8000-000000000002', 'tagesschau', 'tagesschau',
    'https://www.tagesschau.de/index~rss2.xml', 'rss', 'de', 30, true,
-   '33333333-3333-3333-3333-333333333333'),
-  ('aaaaaaaa-0000-0000-0000-000000000003', 'BBC News', 'bbc-news',
+   '33333333-3333-4333-8333-333333333333'),
+  ('aaaaaaaa-0000-4000-8000-000000000003', 'BBC News', 'bbc-news',
    'https://feeds.bbci.co.uk/news/rss.xml', 'rss', 'en', 60, true,
-   '33333333-3333-3333-3333-333333333333')
+   '33333333-3333-4333-8333-333333333333')
 on conflict (id) do nothing;
 
 insert into system_settings (key, value)
@@ -1214,7 +1214,7 @@ describe('sourceCategoryMappingSchema', () => {
   it('accepts a raw category paired with a category UUID', () => {
     const result = sourceCategoryMappingSchema.safeParse({
       source_category_raw: 'Tech',
-      category_id: '11111111-1111-1111-1111-111111111111',
+      category_id: '11111111-1111-4111-8111-111111111111',
     })
     expect(result.success).toBe(true)
   })
@@ -1222,7 +1222,7 @@ describe('sourceCategoryMappingSchema', () => {
   it('rejects an empty raw category', () => {
     const result = sourceCategoryMappingSchema.safeParse({
       source_category_raw: '',
-      category_id: '11111111-1111-1111-1111-111111111111',
+      category_id: '11111111-1111-4111-8111-111111111111',
     })
     expect(result.success).toBe(false)
   })
