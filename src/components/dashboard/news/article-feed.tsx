@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { Newspaper, AlertCircle, SearchX } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useArticles } from '@/hooks/use-articles'
+import { usePersistedViewMode } from '@/hooks/use-persisted-view-mode'
 import ArticleCard from '@/components/dashboard/news/article-card'
 import ArticleCardSkeleton from '@/components/dashboard/news/article-card-skeleton'
 import ArticleFilters from '@/components/dashboard/news/article-filters'
@@ -12,10 +12,8 @@ import ArticlePagination from '@/components/dashboard/news/article-pagination'
 import ViewToggle, { type ViewMode } from '@/components/dashboard/sources/articles/view-toggle'
 import ArticleGridCard from '@/components/dashboard/sources/articles/article-grid-card'
 
-const VIEW_MODE_KEY = 'newsgrap3r-view-mode'
-
 export default function ArticleFeed() {
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [viewMode, setViewMode] = usePersistedViewMode()
 
   const {
     articles,
@@ -30,26 +28,9 @@ export default function ArticleFeed() {
     refetch,
   } = useArticles()
 
-  // Restore view mode from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY)
-      if (stored === 'list' || stored === 'grid') {
-        setViewMode(stored)
-      }
-    } catch {
-      // localStorage may not be available
-    }
-  }, [])
-
-  // Persist view mode to localStorage
+  // Persistence is handled inside usePersistedViewMode.
   function handleViewModeChange(mode: ViewMode) {
     setViewMode(mode)
-    try {
-      localStorage.setItem(VIEW_MODE_KEY, mode)
-    } catch {
-      // silently fail
-    }
   }
 
   const hasActiveFilters = !!(filters.source_id || filters.language || filters.search || filters.category_id || filters.from || filters.to)

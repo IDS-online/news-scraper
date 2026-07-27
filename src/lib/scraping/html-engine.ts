@@ -308,7 +308,7 @@ async function fetchHtml(url: string, sourceId: string, timestamp: string): Prom
 
     // Detect charset from Content-Type header or meta tag
     const contentType = response.headers.get('content-type') ?? ''
-    let charset = detectCharset(contentType, rawBytes)
+    const charset = detectCharset(contentType, rawBytes)
 
     const decoder = new TextDecoder(charset, { fatal: false, ignoreBOM: false })
     return decoder.decode(rawBytes)
