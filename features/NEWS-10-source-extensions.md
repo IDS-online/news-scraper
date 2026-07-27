@@ -81,11 +81,3 @@ Das Quellen-Formular (NEWS-2) wird um drei Felder erweitert:
 **Mapping-Auflösung:** Im Scheduler (NEWS-5) nach dem Scraping — `source_category_raw` des Artikels gegen `source_category_mappings` matchen → `article_categories` befüllen.
 
 **Neue Packages:** Keine
-
-
-
-artikel
-teasertitel
-teasertext
-teasertext
-spitzmarketeaser

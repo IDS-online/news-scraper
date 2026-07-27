@@ -38,11 +38,18 @@
       "Bash(git add sql/003-articles.sql src/lib/scraping/scheduler.ts src/app/api/cron/ src/app/api/sources/[id]/scrape/ vercel.json src/types/source.ts package.json package-lock.json)",
       "Bash(git -C /Users/michaelmollath/projects/news-scraper log --oneline -S \"CREATE TABLE\" -20)",
       "Skill(requirements)",
-      "Skill(requirements:*)"
+      "Skill(requirements:*)",
+      "mcp__supabase__get_logs"
     ],
     "additionalDirectories": [
       "/Users/michaelmollath/projects/news-scraper/src/app/api/sources/[id]",
       "/Users/michaelmollath/projects/news-scraper/src/app/api/articles"
     ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "context-mode@context-mode": true,
+    "claude-mem@thedotmack": true,
+    "frontend-design@claude-plugins-official": true
   }
 }
