@@ -105,7 +105,7 @@ export async function scrapeRssFeed(source: Source): Promise<ScrapeResult> {
 /**
  * Normalize a URL: remove trailing slashes from path, keep query params.
  */
-function normalizeUrl(raw: string): string {
+export function normalizeUrl(raw: string): string {
   try {
     const url = new URL(raw)
     // Remove trailing slashes from pathname (but keep "/" for root)
@@ -120,7 +120,7 @@ function normalizeUrl(raw: string): string {
 /**
  * Parse a date string into ISO 8601 format. Returns null if unparseable.
  */
-function parseDate(raw: string | undefined | null): string | null {
+export function parseDate(raw: string | undefined | null): string | null {
   if (!raw) return null
   const date = new Date(raw)
   if (isNaN(date.getTime())) return null
@@ -130,7 +130,7 @@ function parseDate(raw: string | undefined | null): string | null {
 /**
  * Extract image URL from various RSS feed formats.
  */
-function extractImageUrl(item: Record<string, unknown>): string | null {
+export function extractImageUrl(item: Record<string, unknown>): string | null {
   // media:content
   const mediaContent = item.mediaContent as Record<string, unknown> | undefined
   if (mediaContent?.$ && typeof (mediaContent.$ as Record<string, unknown>).url === 'string') {
@@ -158,7 +158,7 @@ function extractImageUrl(item: Record<string, unknown>): string | null {
 /**
  * Extract raw category string from feed item.
  */
-function extractCategory(item: Record<string, unknown>): string | null {
+export function extractCategory(item: Record<string, unknown>): string | null {
   const category = item.category
   if (typeof category === 'string') return category
   if (Array.isArray(category) && category.length > 0) {
@@ -214,7 +214,7 @@ function detectLanguage(
  * Map common ISO 639-3 codes (from franc) to ISO 639-1 codes.
  * Returns the 3-letter code if no mapping exists.
  */
-function iso639_3to1(code3: string): string {
+export function iso639_3to1(code3: string): string {
   const map: Record<string, string> = {
     deu: 'de', eng: 'en', fra: 'fr', spa: 'es', ita: 'it',
     por: 'pt', nld: 'nl', pol: 'pl', rus: 'ru', jpn: 'ja',
