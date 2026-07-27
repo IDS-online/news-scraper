@@ -1622,7 +1622,7 @@ gh api -X PUT repos/IDS-online/news-scraper/branches/main/protection \
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {
-    "required_approving_review_count": 1,
+    "required_approving_review_count": 0,
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": false
   },
@@ -1634,6 +1634,13 @@ JSON
 ```
 
 `enforce_admins: true` is what makes the rule apply to you as well, which was an explicit decision.
+
+**Why `required_approving_review_count` is 0 here and not 1.** GitHub does not allow you to
+approve your own pull request, and `enforce_admins: true` removes the admin override. With
+1 required review and no second developer on the repository yet, Tasks 10–13 would be
+unmergeable. So protection lands now — no direct pushes, CI required, admins included —
+and the review requirement is raised to 1 in Step 8, once the colleague has accepted their
+invitation. Everything else about the rule is final.
 
 - [ ] **Step 3: Restrict merges to squash only**
 
@@ -1652,7 +1659,7 @@ gh api repos/IDS-online/news-scraper/branches/main/protection \
   --jq '{checks: .required_status_checks.contexts, admins: .enforce_admins.enabled, reviews: .required_pull_request_reviews.required_approving_review_count}'
 ```
 
-Expected: `{"checks":["verify","migrations"],"admins":true,"reviews":1}`.
+Expected: `{"checks":["verify","migrations"],"admins":true,"reviews":0}`.
 
 - [ ] **Step 5: Prove a direct push is rejected**
 
@@ -1683,6 +1690,31 @@ gh api -X PUT repos/IDS-online/news-scraper/collaborators/<their-github-username
 ```
 
 Also grant them access to: the Supabase organization `omfdwopofmygowyijdss` (both `news-scraper` and `news-scraper-dev`), and the Vercel team `team_dEk59nIGBWKoyErY0NVpYKh8`. Vercel access is what makes `vercel env pull` work for them.
+
+- [ ] **Step 8: Once they have accepted, raise the review requirement to 1**
+
+Do this only after their repository invitation is accepted — until then it re-creates the
+deadlock described above.
+
+```bash
+gh api -X PATCH repos/IDS-online/news-scraper/branches/main/protection/required_pull_request_reviews \
+  -F required_approving_review_count=1 \
+  -F dismiss_stale_reviews=true
+```
+
+Verify:
+
+```bash
+gh api repos/IDS-online/news-scraper/branches/main/protection \
+  --jq '.required_pull_request_reviews.required_approving_review_count'
+```
+
+Expected: `1`. This is the final intended state — from here, neither of you can merge your
+own work without the other's approval.
+
+If this step runs before Tasks 10–13 are merged, those tasks will need your colleague's
+review to land. That is fine if they are available; otherwise defer this step until they
+are.
 
 ---
 
@@ -2390,7 +2422,7 @@ Mapped from §12 of the design spec. Verify each after Task 13.
 - [ ] The CI `migrations` job rebuilds the full schema from `supabase/migrations/` against an empty database, and `supabase db push` against `news-scraper-dev` succeeds from scratch *(Task 8 Step 7, Task 3 Step 3)*
 - [ ] A direct push to `main` is rejected for both developers *(Task 9 Step 5, Task 13 Step 7)*
 - [ ] A pull request cannot merge while `verify` or `migrations` is failing *(Task 9 Step 4)*
-- [ ] A pull request cannot merge without one approving review *(Task 9 Step 4)*
+- [ ] A pull request cannot merge without one approving review *(Task 9 Step 8 — deferred until the second developer accepts their invitation; until then protection runs with 0 required reviews so Tasks 10–13 can land)*
 - [ ] `npm run test` passes and covers the scraping engines, feed detector, scheduler and validation schemas *(Tasks 5–7)*
 - [ ] `features/INDEX.md` and `docs/architecture.md` describe the codebase as it is, with NEWS-11 marked Planned *(Task 11)*
 - [ ] No secret is stored anywhere except Vercel environment variables and local `.env.local` files *(Task 2 Step 7, Task 12 Step 4)*
