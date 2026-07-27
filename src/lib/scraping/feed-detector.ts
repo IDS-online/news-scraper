@@ -86,7 +86,7 @@ async function tryParseFeed(
 /**
  * Extract feed URLs from HTML <link> tags.
  */
-function extractLinkTagFeeds(html: string, baseUrl: string): string[] {
+export function extractLinkTagFeeds(html: string, baseUrl: string): string[] {
   const $ = cheerio.load(html)
   const urls: string[] = []
 
