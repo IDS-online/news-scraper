@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+        env:
+          # src/instrumentation.ts calls validateEnv() at startup and throws when a
+          # required variable is missing, which `next build` can trigger. These are
+          # syntactically valid dummies — no real credentials belong in CI.
+          NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key
+          CRON_SECRET: dummy-cron-secret
+
+  migrations:
+    name: migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # The baseline migration depends on the Supabase stack — auth.users, auth.uid(),
+      # auth.role() and the anon/authenticated/service_role roles. A plain postgres
+      # container cannot replay it; it must be a real local Supabase instance.
+      - name: Start the local Supabase stack
+        run: supabase start
+
+      # --local is explicit and load-bearing: `supabase db reset --linked` would reset a
+      # REMOTE project. Never remove it.
+      # --no-seed keeps this job about one question — does the committed migration history
+      # rebuild the schema from an empty database. Drop it once supabase/seed.sql exists
+      # if you also want the seed validated here.
+      - name: Rebuild the schema from committed migrations
+        run: supabase db reset --local --no-seed
+
+      - name: Stop the local Supabase stack
+        if: always()
+        run: supabase stop
