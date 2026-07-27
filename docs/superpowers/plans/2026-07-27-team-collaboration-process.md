@@ -307,23 +307,58 @@ Expected: three categories, three sources, one settings row. Confirm in the Tabl
 
 If a column name in the seed does not match the real schema, correct the seed — the schema is the source of truth. Note that the code uses `is_active` (see `src/lib/validations/source.ts:26`) even though `docs/architecture.md` calls it `active`; that documentation error is corrected in Task 11.
 
-- [ ] **Step 7: Add the development keys to Vercel**
+- [ ] **Step 7: Re-scope the Vercel environment variables**
 
-For each variable, add a `Development`-scoped environment variable in the Vercel project `news-scraper`:
+The starting state, confirmed with `vercel env ls`, is:
 
-| Variable | Value |
-|----------|-------|
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://<NEW_DEV_PROJECT_REF>.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | dev project anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | dev project service role key |
-| `CRON_SECRET` | generate with `openssl rand -base64 32` |
-| `ANTHROPIC_API_KEY` | leave unset — NEWS-11 is not implemented (see Task 11) |
+```
+SUPABASE_SERVICE_ROLE_KEY       Preview, Production            <- no Development
+CRON_SECRET                     Preview, Production            <- no Development
+ANTHROPIC_API_KEY               Preview, Production            <- no Development
+NEXT_PUBLIC_SUPABASE_URL        Development, Preview, Production
+NEXT_PUBLIC_SUPABASE_ANON_KEY   Development, Preview, Production
+```
 
-Use the dashboard, or:
+Two defects follow from this and both must be fixed here.
+
+**Preview deployments currently run against production, holding the service role key.**
+Every pull request gets a live preview wired to the production database with the key that
+bypasses RLS. Once a second developer is opening pull requests, that is an unacceptable
+default. Preview must point at `news-scraper-dev`.
+
+**The Development scope is missing three variables.** `src/lib/env.ts` lists
+`SUPABASE_SERVICE_ROLE_KEY` as required and throws at startup without it, so
+`vercel env pull` today produces a `.env.local` that cannot boot the app — the exact
+onboarding path `README.md` will document.
+
+Set both the `Development` and `Preview` scopes to the **development** project. Leave
+`Production` alone.
+
+| Variable | Development | Preview | Production |
+|----------|-------------|---------|-----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://cekgyjynxgyktzouepkp.supabase.co` | same as Development | unchanged |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | dev anon key | same as Development | unchanged |
+| `SUPABASE_SERVICE_ROLE_KEY` | dev service role key | same as Development | unchanged |
+| `CRON_SECRET` | `openssl rand -base64 32` | same as Development | unchanged |
+| `ANTHROPIC_API_KEY` | leave unset — NEWS-11 is not implemented (see Task 11) | leave unset | unchanged |
+
+Removing an existing scoped value and re-adding it is the reliable route, since
+`vercel env add` will not overwrite in place:
 
 ```bash
+vercel env rm NEXT_PUBLIC_SUPABASE_URL preview
+vercel env add NEXT_PUBLIC_SUPABASE_URL preview
 vercel env add NEXT_PUBLIC_SUPABASE_URL development
 ```
+
+Verify the end state:
+
+```bash
+vercel env ls
+```
+
+Expected: every variable above carries a `Development` and a `Preview` scope, and neither
+resolves to `xvkviaapboambbvsvnuz`.
 
 - [ ] **Step 8: Verify the `vercel env pull` onboarding path works**
 
