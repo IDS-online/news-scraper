@@ -88,6 +88,34 @@ describe('extractImageUrl', () => {
     }
     expect(extractImageUrl(item)).toBe('https://example.com/bevorzugt.jpg')
   })
+
+  it('accepts an enclosure whose MIME type is an image but whose URL has no image extension', () => {
+    const item = { enclosure: { url: 'https://example.com/bild', type: 'image/png' } }
+    expect(extractImageUrl(item)).toBe('https://example.com/bild')
+  })
+
+  it('accepts an enclosure with an image extension despite a non-image MIME type', () => {
+    const item = {
+      enclosure: { url: 'https://example.com/bild.jpg', type: 'application/octet-stream' },
+    }
+    expect(extractImageUrl(item)).toBe('https://example.com/bild.jpg')
+  })
+
+  it('prefers media:content over media:thumbnail', () => {
+    const item = {
+      mediaContent: { $: { url: 'https://example.com/content.jpg' } },
+      mediaThumbnail: { $: { url: 'https://example.com/thumb.jpg' } },
+    }
+    expect(extractImageUrl(item)).toBe('https://example.com/content.jpg')
+  })
+
+  it('falls through to the enclosure when media:content carries no url', () => {
+    const item = {
+      mediaContent: {},
+      enclosure: { url: 'https://example.com/bild.jpg', type: 'image/jpeg' },
+    }
+    expect(extractImageUrl(item)).toBe('https://example.com/bild.jpg')
+  })
 })
 
 describe('extractCategory', () => {
@@ -105,6 +133,10 @@ describe('extractCategory', () => {
 
   it('returns null when no category is present', () => {
     expect(extractCategory({})).toBeNull()
+  })
+
+  it('returns null when the first array entry is not a string', () => {
+    expect(extractCategory({ category: [123] })).toBeNull()
   })
 })
 
