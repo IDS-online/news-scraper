@@ -42,8 +42,16 @@ describe('parseDate', () => {
     expect(parseDate('2026-03-06T10:30:00Z')).toBe('2026-03-06T10:30:00.000Z')
   })
 
-  it('parses a natural-language English date via chrono', () => {
+  it('parses a natural-language English date via the native Date fallback', () => {
     const result = parseDate('January 15, 2024')
+    expect(result).not.toBeNull()
+    expect(result!.startsWith('2024-01-15')).toBe(true)
+  })
+
+  it('falls back to chrono when native Date cannot parse the string', () => {
+    // new Date('Jan 15th, 2024') is Invalid Date — the ordinal suffix defeats it —
+    // so this input is only parseable via the chrono fallback.
+    const result = parseDate('Jan 15th, 2024')
     expect(result).not.toBeNull()
     expect(result!.startsWith('2024-01-15')).toBe(true)
   })
