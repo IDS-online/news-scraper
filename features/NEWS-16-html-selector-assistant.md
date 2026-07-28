@@ -1,8 +1,8 @@
 # NEWS-16: HTML-Selektor-Assistent für Quellen-Formular
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-03-06
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-07-28
 
 ## Dependencies
 - Requires: NEWS-2 (News-Quellen-Verwaltung) — extends the source form dialog

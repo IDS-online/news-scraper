@@ -4,6 +4,9 @@
 **Priority:** P0 (MVP)
 **Created:** 2026-03-06
 
+> Nicht implementiert. Nur `ANTHROPIC_API_KEY` ist deklariert, in `src/lib/env.ts`.
+> Es gibt kein `src/lib/categorization/`-Modul und keine Anthropic-SDK-Abhängigkeit in `package.json`.
+
 ## Dependencies
 - Requires: NEWS-5 (Scraping Scheduler) — Kategorisierung läuft als Post-Processing-Schritt nach dem Scraping
 - Requires: NEWS-9 (Kategorie-Verwaltung) — Kategorien mit Name + Beschreibung müssen existieren

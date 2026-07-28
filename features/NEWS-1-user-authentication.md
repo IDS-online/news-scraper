@@ -1,6 +1,6 @@
 # NEWS-1: User Authentication & Rollen
 
-**Status:** Planned
+**Status:** Deployed
 **Priority:** P0 (MVP)
 **Created:** 2026-03-05
 

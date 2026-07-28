@@ -1,8 +1,8 @@
 # NEWS-14: RSS Feed Auto-Erkennung
 
-## Status: In Progress
+## Status: Deployed
 **Created:** 2026-03-06
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-07-28
 
 ## Dependencies
 - Requires: NEWS-2 (News-Quellen-Verwaltung) — feature is embedded in the Add Source form

@@ -1,6 +1,6 @@
 # NEWS-5: Scraping Scheduler & Deduplizierung
 
-**Status:** In Progress
+**Status:** Deployed
 **Priority:** P0 (MVP)
 **Created:** 2026-03-05
 

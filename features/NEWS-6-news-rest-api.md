@@ -1,6 +1,6 @@
 # NEWS-6: News REST API
 
-**Status:** In Review
+**Status:** Deployed
 **Priority:** P0 (MVP)
 **Created:** 2026-03-05
 
