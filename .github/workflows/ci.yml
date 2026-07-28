@@ -13,6 +13,7 @@ jobs:
   verify:
     name: verify
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -47,12 +48,17 @@ jobs:
   migrations:
     name: migrations
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned deliberately. This job is a REQUIRED status check, so `latest` would let an
+      # upstream CLI release change reset semantics and turn every pull request red with no
+      # change on our side — blocking all merges until someone traced it to a third party.
+      # Bump this on purpose, in its own pull request.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.110.0
 
       # The baseline migration depends on the Supabase stack — auth.users, auth.uid(),
       # auth.role() and the anon/authenticated/service_role roles. A plain postgres
@@ -62,11 +68,11 @@ jobs:
 
       # --local is explicit and load-bearing: `supabase db reset --linked` would reset a
       # REMOTE project. Never remove it.
-      # --no-seed keeps this job about one question — does the committed migration history
-      # rebuild the schema from an empty database. Drop it once supabase/seed.sql exists
-      # if you also want the seed validated here.
-      - name: Rebuild the schema from committed migrations
-        run: supabase db reset --local --no-seed
+      # Seeding is deliberately NOT skipped. supabase/seed.sql is part of the onboarding
+      # path, so a broken seed would otherwise surface only when a new developer runs
+      # `supabase db reset` for the first time — the exact moment this job exists to protect.
+      - name: Rebuild the schema and load the seed
+        run: supabase db reset --local
 
       - name: Stop the local Supabase stack
         if: always()
