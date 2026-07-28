@@ -57,12 +57,16 @@ All of them are expected:
   ```sql
   update auth.users set email_confirmed_at = now() where email = 'you@example.com';
   ```
-- A freshly registered account has `profiles.role = 'user'`. **The admin pages
-  (`/dashboard/admin/*`) are simply absent — there is no error, no redirect message,
-  nothing.** Promote yourself in the SQL editor:
+- A freshly registered account has `profiles.role = 'user'`. **Admin-only controls are
+  simply absent — there is no error, no redirect message, nothing.** Creating and
+  editing sources on `/dashboard/sources`, managing categories on
+  `/dashboard/categories`, and deleting articles all check the role client-side and
+  render nothing if you are not an admin. Promote yourself in the SQL editor:
   ```sql
-  update profiles set role = 'admin' where email = 'you@example.com';
+  update public.profiles set role = 'admin' where email = 'you@example.com';
   ```
+  Note there is no `/dashboard/admin` route despite what `docs/architecture.md`
+  describes — admin capability is gated per page, not by a separate URL segment.
 - Once you're in, the news feed will likely be empty and stay empty. **Scheduled
   scraping only runs in production** — the crons in `vercel.json` fire against
   production deployments, never against development or previews. A quiet dev
