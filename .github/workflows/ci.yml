@@ -71,14 +71,11 @@ jobs:
       # Seeding is deliberately NOT skipped. supabase/seed.sql is part of the onboarding
       # path, so a broken seed would otherwise surface only when a new developer runs
       # `supabase db reset` for the first time — the exact moment this job exists to protect.
-      - name: DIAGNOSTIC - apply the seed via psql for a real error message
-        run: |
-          DBURL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
-          echo "db url host: $(echo "$DBURL" | sed 's|.*@||')"
-          psql "$DBURL" -v ON_ERROR_STOP=1 -f supabase/seed.sql
-
-      - name: Rebuild the schema and load the seed
-        run: supabase db reset --local
+      # DIAGNOSTIC: --sql-paths force-enables seeding for this reset even though
+      # config.toml has it disabled. Distinguishes "the CLI cannot seed this file at all"
+      # from "the CLI cannot seed during `start`, when the stack is still coming up".
+      - name: Rebuild the schema and load the seed via the CLI
+        run: supabase db reset --local --sql-paths ./seed.sql
 
       - name: Stop the local Supabase stack
         if: always()
