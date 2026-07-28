@@ -4,6 +4,9 @@
 **Priority:** P0 (MVP)
 **Created:** 2026-03-06
 
+> Nicht implementiert. Es gibt weder `src/app/dashboard/statistics/` noch `src/app/api/stats/`,
+> und `recharts` ist keine Abhängigkeit in `package.json`.
+
 ## Dependencies
 - Requires: NEWS-1 (User Authentication) — eingeloggte User
 - Requires: NEWS-2 (News-Quellen-Verwaltung) — Quellen müssen im System existieren

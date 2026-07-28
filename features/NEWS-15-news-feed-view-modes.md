@@ -1,8 +1,8 @@
 # NEWS-15: News Feed - Bild-Anzeige und Ansichtsmodus-Umschalter
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-03-06
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-07-28
 
 ## Dependencies
 - Requires: NEWS-7 (News Dashboard UI) — extends the existing news feed page

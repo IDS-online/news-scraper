@@ -1,8 +1,8 @@
 # NEWS-18: Visueller Quellen-Einrichtungs-Assistent
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-03-07
-**Last Updated:** 2026-03-07
+**Last Updated:** 2026-07-28
 
 ## Dependencies
 - Requires: NEWS-2 (News-Quellen-Verwaltung) — the source form is the fallback; the wizard creates a source on completion

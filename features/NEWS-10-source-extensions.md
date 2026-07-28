@@ -4,6 +4,14 @@
 **Priority:** P0 (MVP)
 **Created:** 2026-03-06
 
+> Teilweise implementiert. Slug, `default_category_id`, `retention_days` und die
+> `source_category_mappings`-Tabelle samt CRUD-API
+> (`src/app/api/sources/[id]/mappings/route.ts`) existieren. Die in diesem Dokument (Zeile 52,
+> Zeile 81) geforderte Mapping-Auflösung im Scheduler nach dem Scraping ist NICHT gebaut —
+> `src/lib/scraping/scheduler.ts` liest `source_category_mappings` und `default_category_id`
+> nirgends. Neu erstellte Artikel bekommen dadurch nie automatisch eine Kategorie zugewiesen.
+> Verifiziert am 2026-07-28 während der Dokumentationskorrektur (Task 11).
+
 ## Dependencies
 - Requires: NEWS-1 (User Authentication) — nur Admins konfigurieren Quellen
 - Requires: NEWS-2 (News-Quellen-Verwaltung) — erweitert das Quellen-Formular

@@ -1,6 +1,6 @@
 # NEWS-9: Kategorie-Verwaltung
 
-**Status:** In Review
+**Status:** Deployed
 **Priority:** P0 (MVP)
 **Created:** 2026-03-06
 

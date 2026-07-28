@@ -1,8 +1,8 @@
 # NEWS-17: HTML-Quellen Scraping-Vorschau
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-03-07
-**Last Updated:** 2026-03-07
+**Last Updated:** 2026-07-28
 
 ## Dependencies
 - Requires: NEWS-2 (News-Quellen-Verwaltung) — extends the source form dialog

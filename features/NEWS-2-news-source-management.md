@@ -1,6 +1,6 @@
 # NEWS-2: News-Quellen-Verwaltung (Admin)
 
-**Status:** Planned
+**Status:** Deployed
 **Priority:** P0 (MVP)
 **Created:** 2026-03-05
 
