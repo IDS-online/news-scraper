@@ -1,13 +1,17 @@
 -- Seed data for local and development environments.
 -- Applied by `supabase db reset`. Never run against production.
 --
--- Deliberately uses fixed UUIDs so seeded data is stable across resets and can be
--- referenced from tests and manual QA. They are RFC 4122 v4-conformant (version nibble 4,
--- variant nibble 8) because createSourceSchema validates default_category_id with Zod's
--- .uuid(), which rejects the more obvious 1111...-style placeholders even though Postgres
--- accepts them.
+-- Every table reference is schema-qualified. The Supabase CLI applies this file on a
+-- connection with an empty search_path, so a bare `categories` fails with
+-- `relation "categories" does not exist (SQLSTATE 42P01)` even though the table is there.
+-- psql does not show this, because its default search_path includes public.
+--
+-- UUIDs are fixed so seeded data is stable across resets and can be referenced from tests
+-- and manual QA. They are RFC 4122 v4-conformant (version nibble 4, variant nibble 8)
+-- because createSourceSchema validates default_category_id with Zod's .uuid(), which
+-- rejects the more obvious 1111...-style placeholders even though Postgres accepts them.
 
-insert into categories (id, name, description)
+insert into public.categories (id, name, description)
 values
   ('11111111-1111-4111-8111-111111111111', 'Technologie',
    'Nachrichten zu Software, Hardware, IT-Sicherheit und digitaler Infrastruktur.'),
@@ -17,7 +21,7 @@ values
    'Innen- und aussenpolitische Berichterstattung sowie Gesetzgebung.')
 on conflict (id) do nothing;
 
-insert into sources (
+insert into public.sources (
   id, name, slug, url, type, language, interval_minutes, is_active, default_category_id
 )
 values
@@ -32,6 +36,6 @@ values
    '33333333-3333-4333-8333-333333333333')
 on conflict (id) do nothing;
 
-insert into system_settings (key, value)
+insert into public.system_settings (key, value)
 values ('retention_enabled', 'false')
 on conflict (key) do nothing;
