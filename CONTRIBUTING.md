@@ -204,6 +204,10 @@ These are filed and tracked as issues, not secrets — check before you re-disco
   validation standards exist across the API
 - [#7](https://github.com/IDS-online/news-scraper/issues/7) — `registerSchema` is
   duplicated (and untested) between the register API route and the register page
+- [#9](https://github.com/IDS-online/news-scraper/issues/9) — source category mappings
+  are configured but never applied. The mapping UI, API and table all work; `scheduler.ts`
+  never reads them, so a configured mapping has no effect on any article. This one is
+  worth knowing early because the configuration surface looks complete.
 
 ## Feature status
 

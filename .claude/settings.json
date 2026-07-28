@@ -25,10 +25,8 @@
       "Bash(mv PROJ-6-news-rest-api.md NEWS-6-news-rest-api.md)",
       "Bash(mv PROJ-7-news-dashboard-ui.md NEWS-7-news-dashboard-ui.md)",
       "Bash(mv PROJ-8-article-review-view.md NEWS-8-article-review-view.md)",
-      "Bash(git -C /Users/michaelmollath/projects/news-scraper log --oneline -S \"CREATE TABLE\" -10)",
       "mcp__supabase__list_projects",
       "mcp__supabase__apply_migration",
-      "Bash(git -C /Users/michaelmollath/projects/news-scraper ls-files src/app/api/)",
       "Bash(npx tsc --noEmit)",
       "Bash(curl -s http://localhost:3000/dashboard/sources)",
       "Bash(curl -sv http://localhost:3000/dashboard/sources)",
@@ -36,20 +34,9 @@
       "Bash(npx next lint --dir src)",
       "Bash(npx next lint src)",
       "Bash(git add sql/003-articles.sql src/lib/scraping/scheduler.ts src/app/api/cron/ src/app/api/sources/[id]/scrape/ vercel.json src/types/source.ts package.json package-lock.json)",
-      "Bash(git -C /Users/michaelmollath/projects/news-scraper log --oneline -S \"CREATE TABLE\" -20)",
       "Skill(requirements)",
       "Skill(requirements:*)",
       "mcp__supabase__get_logs"
-    ],
-    "additionalDirectories": [
-      "/Users/michaelmollath/projects/news-scraper/src/app/api/sources/[id]",
-      "/Users/michaelmollath/projects/news-scraper/src/app/api/articles"
     ]
-  },
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true,
-    "context-mode@context-mode": true,
-    "claude-mem@thedotmack": true,
-    "frontend-design@claude-plugins-official": true
   }
 }
