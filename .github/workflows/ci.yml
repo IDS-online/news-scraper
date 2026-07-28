@@ -64,13 +64,19 @@ jobs:
       # auth.role() and the anon/authenticated/service_role roles. A plain postgres
       # container cannot replay it; it must be a real local Supabase instance.
       - name: Start the local Supabase stack
-        run: supabase start --debug
+        run: supabase start
 
       # --local is explicit and load-bearing: `supabase db reset --linked` would reset a
       # REMOTE project. Never remove it.
       # Seeding is deliberately NOT skipped. supabase/seed.sql is part of the onboarding
       # path, so a broken seed would otherwise surface only when a new developer runs
       # `supabase db reset` for the first time — the exact moment this job exists to protect.
+      - name: DIAGNOSTIC - apply the seed via psql for a real error message
+        run: |
+          DBURL=$(supabase status -o env | grep '^DB_URL=' | cut -d= -f2- | tr -d '"')
+          echo "db url host: $(echo "$DBURL" | sed 's|.*@||')"
+          psql "$DBURL" -v ON_ERROR_STOP=1 -f supabase/seed.sql
+
       - name: Rebuild the schema and load the seed
         run: supabase db reset --local
 
