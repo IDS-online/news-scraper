@@ -64,7 +64,7 @@ jobs:
       # auth.role() and the anon/authenticated/service_role roles. A plain postgres
       # container cannot replay it; it must be a real local Supabase instance.
       - name: Start the local Supabase stack
-        run: supabase start
+        run: supabase start --debug
 
       # --local is explicit and load-bearing: `supabase db reset --linked` would reset a
       # REMOTE project. Never remove it.
