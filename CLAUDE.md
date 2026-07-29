@@ -52,10 +52,10 @@ All features tracked in `features/INDEX.md`. Every skill reads it at start and u
 
 Two developers work on this repository in parallel. These rules are not optional.
 
-- **Never push to `main`.** It is protected — no direct pushes, the `verify` and
-  `migrations` checks must pass, and merges are squash-only. Required approving reviews
-  is currently 0 and moving to 1. Work on a branch and open a pull request. See
-  `CONTRIBUTING.md`.
+- **Never push to `main`.** It is protected — no direct pushes (admins included), the
+  `verify` and `migrations` checks must pass, the branch must be up to date, one approving
+  review is required, and merges are squash-only. Neither developer can merge their own
+  work unaided. Work on a branch and open a pull request. See `CONTRIBUTING.md`.
 - **Never change the database schema through the Supabase MCP server or the Supabase
   dashboard.** Create a migration with `npx supabase@latest migration new <name>` and
   commit it. `supabase/migrations/` is the source of truth; the schema drifted out of the
