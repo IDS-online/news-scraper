@@ -19,8 +19,9 @@ serves everything through an authenticated REST API and a web dashboard.
 
 ## Setup
 
-Prerequisites: Node.js 24 or newer, and access to the Vercel team and the Supabase
-organization. Ask Michael if you do not have both.
+Prerequisites: Node.js 24 or newer, plus membership of the **IDS online Team** on Vercel
+and of the Supabase organization. Neither is self-service — ask Michael, and check you can
+actually see the `news-scraper` project in both before starting.
 
 ```bash
 git clone https://github.com/IDS-online/news-scraper.git
@@ -28,7 +29,7 @@ cd news-scraper
 npm ci
 
 npx vercel login
-npx vercel link            # select the existing "news-scraper" project
+npx vercel link            # scope: IDS online Team, then the existing "news-scraper" project
 npx vercel env pull .env.local
 
 npm run dev
