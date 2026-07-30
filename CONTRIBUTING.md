@@ -163,12 +163,20 @@ CI runs exactly these four (the `verify` job), plus a full schema rebuild (the
 `main` is protected. No direct pushes — this applies to everyone, including repository
 admins.
 
-To merge you need: `verify` green, `migrations` green, one approving review, and the
-branch up to date with `main`. Merges are squash-only, so the pull request title becomes
-the commit message on `main` — write it in the `type(NEWS-X): description` form.
+To merge you need: `verify` green, `migrations` green, and the branch up to date with
+`main`. Merges are squash-only, so the pull request title becomes the commit message on
+`main` — write it in the `type(NEWS-X): description` form.
 
-With two of us, we review each other's work. That is deliberate: review is the main way
-knowledge about this codebase spreads.
+**A review is not enforced, but it is the expectation.** Requiring one turned out to block
+work whenever the other person was unavailable, so the gate was removed rather than worked
+around. Ask for a review by default and merge unreviewed only when waiting would genuinely
+cost more than the review is worth — a documentation typo, a dependency bump, an urgent
+fix. Review is the main way knowledge about this codebase spreads, and it is the reason
+the codebase does not live in one person's head.
+
+The CI gate is not optional and cannot be bypassed, including by repository admins. If
+`verify` or `migrations` is red, the merge is blocked. That is deliberate: those checks
+have already caught a broken database seed and a schema that could not be rebuilt.
 
 ## Development environment notes
 
