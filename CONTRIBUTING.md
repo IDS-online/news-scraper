@@ -180,6 +180,15 @@ have already caught a broken database seed and a schema that could not be rebuil
 
 ## Development environment notes
 
+- **The deployed Vercel app is production.** It runs against the `news-scraper`
+  database with live data. Local development runs against `news-scraper-dev`, a separate
+  database with seed data. The two are visually identical — nothing in the interface tells
+  you which one you are looking at, so check the URL before deleting anything. Deleting a
+  source cascades to all of its articles.
+- Accounts do not carry across. Registering on the deployed app creates a **production**
+  user; registering on `localhost` creates a **development** user. Same email, different
+  databases, different accounts, separate roles.
+
 - Local development and Preview deployments both point at the `news-scraper-dev` Supabase
   project, not production. `vercel env pull .env.local` is what configures this locally.
 - **Scheduled scraping does not run outside production.** `vercel.json` crons fire against
