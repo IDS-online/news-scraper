@@ -1,4 +1,4 @@
-# Newsgrap3r
+# Newsgrap3r 
 
 Automated multilingual news aggregation. Newsgrap3r scrapes configured RSS/Atom feeds
 and HTML pages on a schedule, deduplicates articles by URL, detects their language, and
