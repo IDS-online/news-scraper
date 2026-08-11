@@ -61,3 +61,15 @@ Admins können News-Quellen (URLs) anlegen, bearbeiten, deaktivieren und lösche
 **Validierung:** Zod-Schema auf Server (URL-Format, Intervall ≥ 5, CSS-Selector-Felder nur bei HTML-Typ)
 
 **Neue Packages:** Keine
+
+---
+
+## Post-deployment note (2026-08-11)
+
+Added a nullable `sources.last_scrape_warning` column (migration
+`20260811101658_add_sources_last_scrape_warning.sql`), alongside the existing `last_error`.
+It holds non-fatal per-container skip messages from a scrape run that still found/inserted at
+least one article — distinct from `last_error`, which is now reserved for runs that found
+nothing at all. The sources list ([source-list.tsx](../src/components/dashboard/sources/source-list.tsx))
+shows it as a yellow "Artikel übersprungen" badge next to the existing red "Fehler" badge.
+Full rationale and the scheduler-side logic change: [NEWS-5, "Post-deployment fix"](NEWS-5-scraping-scheduler.md#post-deployment-fix-2026-08-11).

@@ -44,14 +44,23 @@ export async function POST(
       )
     }
 
-    if (result.errors.length > 0 && result.articles_inserted === 0) {
+    // A hard failure means nothing was extracted at all — matches resolveScrapeStatus() in the scheduler
+    if (result.errors.length > 0 && result.articles_found === 0) {
       return NextResponse.json(
         {
-          message: 'Scraping abgeschlossen mit Fehlern',
+          message: 'Scraping fehlgeschlagen — keine Artikel gefunden',
           result,
         },
         { status: 207 }
       )
+    }
+
+    // Articles were found (and possibly inserted) — skipped containers are a non-fatal warning
+    if (result.errors.length > 0) {
+      return NextResponse.json({
+        message: `Scraping abgeschlossen: ${result.articles_inserted} neue Artikel eingefuegt (${result.errors.length} Artikel uebersprungen)`,
+        result,
+      })
     }
 
     return NextResponse.json({

@@ -63,6 +63,7 @@ export async function scrapeHtmlPreview(
     scraping_in_progress: false,
     last_scraped_at: null,
     last_error: null,
+    last_scrape_warning: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }

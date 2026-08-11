@@ -178,8 +178,8 @@ async function scrapeSource(
     result.articles_found = scrapeResult.articles.length
 
     if (scrapeResult.articles.length === 0) {
-      // No new articles — still update last_scraped_at
-      await updateSourceStatus(supabase, source.id, null)
+      // Nothing extracted at all — a real failure only if the engine also reported why
+      await updateSourceStatus(supabase, source.id, resolveScrapeStatus(result))
       return result
     }
 
@@ -187,8 +187,8 @@ async function scrapeSource(
     const newArticles = await deduplicateArticles(supabase, scrapeResult.articles)
 
     if (newArticles.length === 0) {
-      // All articles already exist
-      await updateSourceStatus(supabase, source.id, null)
+      // All articles already exist — articles were still found, so any skips are warnings, not errors
+      await updateSourceStatus(supabase, source.id, resolveScrapeStatus(result))
       return result
     }
 
@@ -197,11 +197,7 @@ async function scrapeSource(
     result.articles_inserted = inserted
 
     // 5. Update source status
-    await updateSourceStatus(
-      supabase,
-      source.id,
-      result.errors.length > 0 ? result.errors.join('; ') : null
-    )
+    await updateSourceStatus(supabase, source.id, resolveScrapeStatus(result))
 
     console.log(
       `[Scheduler] ${source.name}: ${result.articles_found} found, ${result.articles_inserted} inserted`
@@ -210,8 +206,8 @@ async function scrapeSource(
     const message = err instanceof Error ? err.message : String(err)
     result.errors.push(message)
 
-    // Update source with error
-    await updateSourceStatus(supabase, source.id, message)
+    // A thrown exception means the run produced nothing — always a hard error
+    await updateSourceStatus(supabase, source.id, { last_error: message, last_scrape_warning: null })
 
     console.error(`[Scheduler] Error scraping ${source.name}:`, message)
   } finally {
@@ -266,18 +262,40 @@ async function releaseLock(
 }
 
 /**
+ * Decide whether a run's collected messages are a hard error or a soft warning.
+ *
+ * last_error is reserved for total failures (nothing usable came out of the run).
+ * If at least one article was extracted, per-container skip messages are
+ * informational — they're surfaced as last_scrape_warning instead, so a
+ * partially successful run doesn't read as broken.
+ */
+export function resolveScrapeStatus(result: {
+  articles_found: number
+  errors: string[]
+}): { last_error: string | null; last_scrape_warning: string | null } {
+  if (result.errors.length === 0) {
+    return { last_error: null, last_scrape_warning: null }
+  }
+  if (result.articles_found === 0) {
+    return { last_error: result.errors.join('; '), last_scrape_warning: null }
+  }
+  return { last_error: null, last_scrape_warning: result.errors.join('; ') }
+}
+
+/**
  * Update source status after a scrape run.
  */
 async function updateSourceStatus(
   supabase: ReturnType<typeof createAdminClient>,
   sourceId: string,
-  lastError: string | null
+  status: { last_error: string | null; last_scrape_warning: string | null }
 ): Promise<void> {
   const { error } = await supabase
     .from('sources')
     .update({
       last_scraped_at: new Date().toISOString(),
-      last_error: lastError,
+      last_error: status.last_error,
+      last_scrape_warning: status.last_scrape_warning,
     })
     .eq('id', sourceId)
 

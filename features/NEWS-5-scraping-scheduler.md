@@ -30,7 +30,10 @@ Ein Scheduler-System, das pro Quelle einen Cron-Job ausführt. Jeder Job ruft di
   3. Gescrapte URLs gegen `articles.url` in der DB prüfen (Batch-Query)
   4. Nur neue URLs in `articles` einfügen
   5. `sources.last_scraped_at = now()` setzen
-  6. Bei Fehler: `sources.last_error = <Fehlermeldung>` setzen
+  6. Bei Fehler: `sources.last_error = <Fehlermeldung>` setzen — refined 2026-08-11, see
+     ["Post-deployment fix" below](#post-deployment-fix-2026-08-11): only a total failure
+     (zero articles extracted) sets `last_error`; partial per-container skips alongside a
+     successful run go to the new `sources.last_scrape_warning` column instead
 - [ ] URL-Vergleich ist case-insensitive und ignoriert trailing slashes
 - [ ] Maximale Batch-Insert-Größe: 100 Artikel pro Lauf
 - [ ] Jobs für deaktivierte Quellen (`active = false`) werden nicht ausgeführt
@@ -67,3 +70,49 @@ Ein Scheduler-System, das pro Quelle einen Cron-Job ausführt. Jeder Job ruft di
 **Manueller Trigger:** `POST /api/sources/[id]/scrape` (Admin only) — ruft denselben Job-Code direkt auf.
 
 **Neue Packages:** Keine (nutzt NEWS-3/4 intern)
+
+---
+
+## Post-deployment fix (2026-08-11)
+
+**Problem:** `sources.last_error` was set to the joined list of per-article scrape messages
+(e.g. `Artikel ohne Titel uebersprungen — selector_title "..." nicht gefunden`) whenever *any*
+container failed to parse during a run — even when the same run successfully found and
+inserted other articles. This made an actively-working source (e.g. ZWP: 15 `article.medium`
+containers matching correctly, articles arriving in the DB) show up with a red "Fehler" badge
+in the sources list, indistinguishable from a source that was fully broken. Two of the three
+call sites in `scrapeSource()` additionally discarded `result.errors` outright (always passed
+`null`), which was a separate, pre-existing bug in the opposite direction.
+
+**Root cause context:** per-container skip messages in `html-engine.ts` /
+`scrapeHtmlPage()` (see [NEWS-4](NEWS-4-html-dom-scraping-engine.md)) are informational by
+design — a single malformed container shouldn't abort the whole run — but the scheduler had
+no way to distinguish "some containers were skipped" from "the whole source is down."
+
+**Fix:** added `resolveScrapeStatus(result)` in `src/lib/scraping/scheduler.ts`:
+- `errors.length === 0` → both `last_error` and `last_scrape_warning` cleared (`null`)
+- `errors.length > 0` and `articles_found === 0` → hard failure, `last_error` set (nothing at
+  all came out of this run)
+- `errors.length > 0` and `articles_found > 0` → non-fatal, `last_scrape_warning` set instead,
+  `last_error` cleared
+
+A thrown exception (network error, timeout, unhandled crash) still always sets `last_error`
+directly in the `catch` block — that path is unrelated to per-article skip messages.
+
+**Schema change:** new nullable column `sources.last_scrape_warning` (migration
+`20260811101658_add_sources_last_scrape_warning.sql`).
+
+**Also updated:**
+- `POST /api/sources/[id]/scrape` ([route.ts](../src/app/api/sources/[id]/scrape/route.ts)):
+  the "hard failure" response (HTTP 207) now checks `articles_found === 0` instead of
+  `articles_inserted === 0`, so a run that found articles but inserted 0 new ones (all
+  duplicates) is no longer reported as an error.
+- Sources list UI ([source-list.tsx](../src/components/dashboard/sources/source-list.tsx)):
+  added a yellow "Artikel übersprungen" badge/tooltip driven by `last_scrape_warning`,
+  separate from the existing red "Fehler" badge (`last_error`). The manual-scrape result
+  banner now has three visual states (success/warning/error) instead of two.
+- `resolveScrapeStatus()` is unit-tested in `scheduler.test.ts`.
+
+**Not changed:** the underlying `article.medium` / `h3.large_headline.check_title_size`
+selector configuration for ZWP was already correct — this fix is purely about how the
+scheduler reports partial per-container failures, not about scraping accuracy itself.
