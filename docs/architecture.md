@@ -5,7 +5,7 @@
 
 > Stand: dieses Dokument beschreibt den Zielzustand. Abweichungen zwischen Entwurf und
 > Implementierung sind mit "GEPLANT" markiert. Der verbindliche Stand des Schemas ist
-> `supabase/migrations/`, nicht dieses Dokument. Zuletzt gegen den Code geprüft: 2026-07-28.
+> `supabase/migrations/`, nicht dieses Dokument. Zuletzt gegen den Code geprüft: 2026-08-11.
 
 ---
 
@@ -87,7 +87,8 @@ Konfigurierte Newsquellen (NEWS-2 + NEWS-10 + NEWS-12).
 | default_category_id | uuid (FK → categories, nullable) | Basis-Kategorie |
 | retention_days | int (nullable) | Aufbewahrungsfrist; `NULL` = nie löschen |
 | last_scraped_at | timestamptz (nullable) | Letzter erfolgreicher Scrape |
-| last_error | text (nullable) | Letzter Fehler-Text |
+| last_error | text (nullable) | Hard failure only — set when a run extracted zero articles; `NULL` otherwise, incl. runs with partial skips (see [NEWS-5](../features/NEWS-5-scraping-scheduler.md#post-deployment-fix-2026-08-11)) |
+| last_scrape_warning | text (nullable) | Non-fatal — per-container skip messages from a run that still found/inserted at least one article (added 2026-08-11, see [NEWS-5](../features/NEWS-5-scraping-scheduler.md#post-deployment-fix-2026-08-11)) |
 | scraping_in_progress | boolean | Sperrt gleichzeitige Scrape-Läufe derselben Quelle (fehlte bisher in diesem Dokument) |
 | selector_container | text (nullable) | CSS: Artikel-Container (nur HTML) |
 | selector_title | text (nullable) | CSS: Titel-Element (nur HTML) |
@@ -310,12 +311,20 @@ Vercel Cron → POST /api/cron/scrape
         │
         7. sources-Tabelle aktualisieren
             └─ last_scraped_at = now()
-            └─ last_error = NULL (bei Erfolg)
+            └─ last_error / last_scrape_warning (siehe unten)
 ```
 
 > Schritte 4 und 6 beschreiben den Zielzustand, laufen aber heute nicht. Neue Artikel bleiben
 > dauerhaft auf `categorization_status = 'pending'` ohne zugewiesene Kategorie, sofern sie nicht
 > manuell kategorisiert werden.
+
+> **`last_error` vs. `last_scrape_warning` (added 2026-08-11):** per-container extraction
+> failures (e.g. a missing title element) no longer overwrite `last_error` as long as the run
+> still found at least one article — those go to `last_scrape_warning` instead, so a source
+> that's actively delivering articles doesn't show up as broken. `last_error` is reserved for
+> runs that extracted zero articles, or a thrown exception (network/timeout/fetch failure).
+> Implemented in `resolveScrapeStatus()` in `src/lib/scraping/scheduler.ts`. Details:
+> [NEWS-5, "Post-deployment fix"](../features/NEWS-5-scraping-scheduler.md#post-deployment-fix-2026-08-11).
 
 ---
 

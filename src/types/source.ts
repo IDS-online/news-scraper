@@ -20,6 +20,7 @@ export interface Source {
   scraping_in_progress: boolean
   last_scraped_at: string | null
   last_error: string | null
+  last_scrape_warning: string | null
   created_at: string
   updated_at: string
 }

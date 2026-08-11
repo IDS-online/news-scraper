@@ -31,6 +31,7 @@ import {
   Rss,
   Globe,
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -118,7 +119,7 @@ export default function SourceList({ isAdmin }: SourceListProps) {
 
   // Track scrape-in-progress per source ID + result message
   const [scrapingIds, setScrapingIds] = useState<Set<string>>(new Set())
-  const [scrapeResult, setScrapeResult] = useState<{ id: string; message: string; ok: boolean } | null>(null)
+  const [scrapeResult, setScrapeResult] = useState<{ id: string; message: string; status: 'success' | 'warning' | 'error' } | null>(null)
 
   const fetchSources = useCallback(
     async (page = 1) => {
@@ -229,11 +230,16 @@ export default function SourceList({ isAdmin }: SourceListProps) {
       const data = await res.json()
 
       const errors: string[] = data.result?.errors ?? []
+      const articlesFound: number = data.result?.articles_found ?? 0
+      // A hard failure is nothing extracted at all — matches resolveScrapeStatus() on the server.
+      // Skips alongside articles that WERE found are non-fatal, so those render as a warning.
+      const isFailure = !res.ok || (errors.length > 0 && articlesFound === 0)
+      const hasWarnings = !isFailure && errors.length > 0
       const detail = errors.length > 0 ? ` — ${errors[0]}` : ''
       setScrapeResult({
         id: source.id,
         message: (data.message ?? (res.ok ? 'Scraping abgeschlossen' : data.error ?? 'Fehler')) + detail,
-        ok: res.ok || res.status === 207,
+        status: isFailure ? 'error' : hasWarnings ? 'warning' : 'success',
       })
 
       // Refresh the list so last_scraped_at updates
@@ -241,7 +247,7 @@ export default function SourceList({ isAdmin }: SourceListProps) {
         fetchSources(pagination.page)
       }
     } catch {
-      setScrapeResult({ id: source.id, message: 'Netzwerkfehler beim Scrapen', ok: false })
+      setScrapeResult({ id: source.id, message: 'Netzwerkfehler beim Scrapen', status: 'error' })
     } finally {
       setScrapingIds((prev) => {
         const next = new Set(prev)
@@ -384,9 +390,25 @@ export default function SourceList({ isAdmin }: SourceListProps) {
 
       {/* Scrape result banner */}
       {scrapeResult && (
-        <Card className={scrapeResult.ok ? 'border-green-500/50 bg-green-50/50' : 'border-destructive/50 bg-destructive/5'}>
+        <Card
+          className={
+            scrapeResult.status === 'success'
+              ? 'border-green-500/50 bg-green-50/50'
+              : scrapeResult.status === 'warning'
+                ? 'border-yellow-500/50 bg-yellow-50/50'
+                : 'border-destructive/50 bg-destructive/5'
+          }
+        >
           <CardContent className="flex items-center justify-between py-3 px-4">
-            <p className={`text-sm font-medium ${scrapeResult.ok ? 'text-green-700' : 'text-destructive'}`}>
+            <p
+              className={`text-sm font-medium ${
+                scrapeResult.status === 'success'
+                  ? 'text-green-700'
+                  : scrapeResult.status === 'warning'
+                    ? 'text-yellow-700'
+                    : 'text-destructive'
+              }`}
+            >
               {scrapeResult.message}
             </p>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setScrapeResult(null)}>
@@ -443,6 +465,19 @@ export default function SourceList({ isAdmin }: SourceListProps) {
                                 </TooltipTrigger>
                                 <TooltipContent side="bottom" className="max-w-xs">
                                   <p className="text-xs">{source.last_error}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            {!source.last_error && source.last_scrape_warning && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center gap-1 text-yellow-600">
+                                    <AlertTriangle className="h-3 w-3" />
+                                    <span className="text-xs">Artikel übersprungen</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                  <p className="text-xs">{source.last_scrape_warning}</p>
                                 </TooltipContent>
                               </Tooltip>
                             )}

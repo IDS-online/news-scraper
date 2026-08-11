@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isSourceDue, normalizeUrlForComparison } from '@/lib/scraping/scheduler'
+import { isSourceDue, normalizeUrlForComparison, resolveScrapeStatus } from '@/lib/scraping/scheduler'
 
 function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60 * 1000).toISOString()
@@ -52,5 +52,35 @@ describe('normalizeUrlForComparison', () => {
 
   it('lowercases unparseable input and strips trailing slashes', () => {
     expect(normalizeUrlForComparison('Nicht Eine URL/')).toBe('nicht eine url')
+  })
+})
+
+describe('resolveScrapeStatus', () => {
+  it('reports nothing when there are no errors', () => {
+    expect(resolveScrapeStatus({ articles_found: 5, errors: [] })).toEqual({
+      last_error: null,
+      last_scrape_warning: null,
+    })
+  })
+
+  it('treats errors as a hard failure when nothing was found', () => {
+    expect(
+      resolveScrapeStatus({ articles_found: 0, errors: ['Kein Artikel gefunden'] })
+    ).toEqual({
+      last_error: 'Kein Artikel gefunden',
+      last_scrape_warning: null,
+    })
+  })
+
+  it('downgrades errors to a warning when some articles were still found', () => {
+    expect(
+      resolveScrapeStatus({
+        articles_found: 8,
+        errors: ['Artikel ohne Titel uebersprungen', 'Artikel ohne Titel uebersprungen'],
+      })
+    ).toEqual({
+      last_error: null,
+      last_scrape_warning: 'Artikel ohne Titel uebersprungen; Artikel ohne Titel uebersprungen',
+    })
   })
 })
