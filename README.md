@@ -4,6 +4,22 @@ Automated multilingual news aggregation. Newsgrap3r scrapes configured RSS/Atom 
 and HTML pages on a schedule, deduplicates articles by URL, detects their language, and
 serves everything through an authenticated REST API and a web dashboard.
 
+> ### The deployed app is production. Develop on `localhost`.
+>
+> The deployed Vercel URL runs against the **production** database — real sources, real
+> articles, no undo. As an admin there you can delete a source, which cascades to every
+> article it scraped.
+>
+> Local development (`npm run dev`, http://localhost:3000) runs against a **separate**
+> database, `news-scraper-dev`, with throwaway seed data. Break whatever you like.
+>
+> **The two look identical in the browser.** Nothing on screen tells you which database you
+> are connected to. If you are about to delete something, check the URL first.
+>
+> Registering an account on the deployed app creates a production user; registering on
+> `localhost` creates a development one. They are different databases and different
+> accounts, even with the same email address.
+
 ## Tech stack
 
 | Layer | Technology |
