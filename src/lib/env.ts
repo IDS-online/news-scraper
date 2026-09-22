@@ -27,6 +27,15 @@ const OPTIONAL: EnvSpec[] = [
     name: 'CRON_SECRET',
     hint: 'Secures /api/cron/* — required for scheduled scrape & retention',
   },
+  {
+    name: 'BUBBLE_API_BASE_URL',
+    hint: 'Bubble app URL — NEWS-19 sync into the "News Scraped" data type',
+  },
+  { name: 'BUBBLE_API_TOKEN', hint: 'Bubble Data API token — NEWS-19' },
+  {
+    name: 'BUBBLE_DATA_TYPE',
+    hint: 'API name of the Bubble data type, e.g. newsscraped — NEWS-19',
+  },
 ]
 
 function isMissing(name: string): boolean {

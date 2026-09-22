@@ -33,7 +33,8 @@
 | NEWS-16 | HTML-Selektor-Assistent für Quellen-Formular | Deployed | [NEWS-16-html-selector-assistant.md](NEWS-16-html-selector-assistant.md) | 2026-03-06 |
 | NEWS-17 | HTML-Quellen Scraping-Vorschau | Deployed | [NEWS-17-html-source-scrape-preview.md](NEWS-17-html-source-scrape-preview.md) | 2026-03-07 |
 | NEWS-18 | Visueller Quellen-Einrichtungs-Assistent | Deployed | [NEWS-18-visual-source-wizard.md](NEWS-18-visual-source-wizard.md) | 2026-03-07 |
+| NEWS-19 | Bubble-Sync (Artikel in "News Scraped") | In Progress | [NEWS-19-bubble-sync.md](NEWS-19-bubble-sync.md) | 2026-09-22 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: NEWS-19
+## Next Available ID: NEWS-20
