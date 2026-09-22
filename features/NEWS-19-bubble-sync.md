@@ -36,7 +36,6 @@ sind. Bereits übertragene Artikel werden nicht erneut geschickt.
 - [x] Batchgröße 100, maximal 1000 Artikel pro Lauf
 - [x] Pro Lauf konfigurierbar gegen Live- oder Test-Datenbank (`/version-test`)
 - [x] Leere optionale Felder werden weggelassen, nicht als `""` geschickt
-- [x] `external_id` = Supabase-`articles.id`, damit Bubble selbst deduplizieren kann
 
 ### Fehlerbehandlung
 - [x] Transportfehler (Netzwerk, Timeout, non-2xx) → ganzer Batch bleibt unsynchronisiert, Retry am Folgetag
@@ -50,19 +49,22 @@ sind. Bereits übertragene Artikel werden nicht erneut geschickt.
 
 ## Feldzuordnung
 Definiert in `src/lib/bubble/mapping.ts` — die einzige Stelle, die angepasst werden muss,
-wenn die Feldnamen in Bubble anders heißen.
+wenn sich die Feldnamen in Bubble ändern. Die Namen wurden aus einem bestehenden Datensatz
+der App ids.online ausgelesen; Gross-/Kleinschreibung und Leerzeichen sind Teil des Namens.
 
 | Supabase (`articles`) | Bubble ("News Scraped") |
 |---|---|
-| `id` | `external_id` |
-| `title` | `title` |
-| `url` | `url` |
-| `description` | `description` |
-| `image_url` | `image_url` |
-| `language` | `language` |
-| `published_at` | `published_at` |
-| `source_category_raw` | `source_category` |
-| `sources.name` | `source_name` |
+| `title` | `Headline_DE` |
+| `title` (wiederholt) | `Subheadline_DE` |
+| `description` | `Teaser_Text_DE` |
+| `url` | `Link Source URL` |
+| `image_url` | `Picture` |
+| Host aus `url`, ohne `www.` | `Publisher` |
+| `published_at` | `Date publishing` |
+
+`language` und `source_category_raw` werden nicht übertragen — in Bubble gibt es dafür kein
+Feld. `Subheadline_DE` wiederholt die Headline, weil der Scraper keine eigene Subheadline
+liefert und die bestehenden Datensätze es genauso halten.
 
 ## Konfiguration
 | Variable | Pflicht | Bedeutung |
@@ -76,10 +78,10 @@ Fehlt eine der drei Pflichtvariablen, überspringt der Cron den Sync ohne Fehler
 
 ## Edge Cases
 - Artikel wurde an Bubble übertragen, der Stempel in Supabase schlug fehl → wird geloggt
-  und gemeldet; der Folgelauf erzeugt eine Dublette. Deshalb trägt jeder Datensatz
-  `external_id`, sodass in Bubble ein Constraint darauf gesetzt werden kann.
+  und gemeldet; der Folgelauf erzeugt dann eine Dublette. Bewusst in Kauf genommen: Bubble
+  hat kein Feld für die Supabase-ID, über das sich das abfangen liesse.
 - Mehr als 1000 unsynchronisierte Artikel → der Rest folgt am nächsten Tag.
-- Artikel ohne Quelle (`source_id` ist nullable) → `source_name` entfällt, kein Fehler.
+- Unparsbare Artikel-URL → `Publisher` entfällt, der Datensatz geht trotzdem raus.
 - Retention (NEWS-12) löscht einen Artikel in Supabase → der Bubble-Eintrag bleibt bestehen.
 
 ## Out of Scope

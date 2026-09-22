@@ -1,48 +1,61 @@
 import { describe, it, expect } from 'vitest'
-import { BUBBLE_FIELDS, toBubbleRecord, type SyncableArticle } from './mapping'
+import { BUBBLE_FIELDS, toBubbleRecord, toPublisher, type SyncableArticle } from './mapping'
 
 const article: SyncableArticle = {
   id: 'uuid-1',
   title: 'Schlagzeile',
-  url: 'https://news.example.com/a',
+  url: 'https://www.zwp-online.info/news/a',
   description: 'Teaser',
-  image_url: 'https://news.example.com/a.jpg',
+  image_url: 'https://www.zwp-online.info/a.jpg',
   language: 'de',
   published_at: '2026-09-22T06:00:00.000Z',
   source_category_raw: 'Politik',
-  sources: { name: 'Beispiel-Quelle' },
+  sources: { name: 'ZWP online' },
 }
 
+describe('toPublisher', () => {
+  it('strips the www prefix, matching the existing Bubble records', () => {
+    expect(toPublisher('https://www.zwp-online.info/news/a')).toBe('zwp-online.info')
+  })
+
+  it('keeps a host that has no www prefix', () => {
+    expect(toPublisher('https://mgo-dental.de/x')).toBe('mgo-dental.de')
+  })
+
+  it('keeps a subdomain that is not www', () => {
+    expect(toPublisher('https://news.example.co.uk/x')).toBe('news.example.co.uk')
+  })
+
+  it('returns null for an unparseable URL instead of throwing', () => {
+    expect(toPublisher('not-a-url')).toBeNull()
+  })
+})
+
 describe('toBubbleRecord', () => {
-  it('maps every populated field', () => {
+  it('maps every populated field to its Bubble name', () => {
     expect(toBubbleRecord(article)).toEqual({
-      [BUBBLE_FIELDS.external_id]: 'uuid-1',
-      [BUBBLE_FIELDS.title]: 'Schlagzeile',
-      [BUBBLE_FIELDS.url]: 'https://news.example.com/a',
-      [BUBBLE_FIELDS.language]: 'de',
-      [BUBBLE_FIELDS.published_at]: '2026-09-22T06:00:00.000Z',
-      [BUBBLE_FIELDS.description]: 'Teaser',
-      [BUBBLE_FIELDS.image_url]: 'https://news.example.com/a.jpg',
-      [BUBBLE_FIELDS.source_category_raw]: 'Politik',
-      [BUBBLE_FIELDS.source_name]: 'Beispiel-Quelle',
+      'Headline_DE': 'Schlagzeile',
+      'Subheadline_DE': 'Schlagzeile',
+      'Link Source URL': 'https://www.zwp-online.info/news/a',
+      'Date publishing': '2026-09-22T06:00:00.000Z',
+      'Teaser_Text_DE': 'Teaser',
+      'Picture': 'https://www.zwp-online.info/a.jpg',
+      'Publisher': 'zwp-online.info',
     })
+  })
+
+  it('repeats the headline as subheadline, as the existing records do', () => {
+    expect(toBubbleRecord(article)[BUBBLE_FIELDS.subheadline]).toBe('Schlagzeile')
   })
 
   it('omits empty optional fields instead of sending blanks', () => {
-    const record = toBubbleRecord({
-      ...article,
-      description: null,
-      image_url: null,
-      source_category_raw: null,
-      sources: null,
-    })
+    const record = toBubbleRecord({ ...article, description: null, image_url: null })
     expect(record).not.toHaveProperty(BUBBLE_FIELDS.description)
     expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url)
-    expect(record).not.toHaveProperty(BUBBLE_FIELDS.source_category_raw)
-    expect(record).not.toHaveProperty(BUBBLE_FIELDS.source_name)
   })
 
-  it('always carries the Supabase id so Bubble can deduplicate too', () => {
-    expect(toBubbleRecord(article)[BUBBLE_FIELDS.external_id]).toBe('uuid-1')
+  it('sends no publisher when the URL cannot be parsed', () => {
+    const record = toBubbleRecord({ ...article, url: 'not-a-url' })
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.publisher)
   })
 })
