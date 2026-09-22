@@ -58,7 +58,7 @@ der App ids.online ausgelesen; Gross-/Kleinschreibung und Leerzeichen sind Teil 
 | `title` (wiederholt) | `Subheadline_DE` |
 | `description` | `Teaser_Text_DE` |
 | `url` | `Link Source URL` |
-| `image_url` | `Picture` |
+| `image_url` | `Picture` **und** `Picture URL` |
 | Host aus `url`, ohne `www.` | `Publisher` |
 | `published_at` | `Date publishing` |
 

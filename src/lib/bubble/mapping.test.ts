@@ -40,6 +40,7 @@ describe('toBubbleRecord', () => {
       'Date publishing': '2026-09-22T06:00:00.000Z',
       'Teaser_Text_DE': 'Teaser',
       'Picture': 'https://www.zwp-online.info/a.jpg',
+      'Picture URL': 'https://www.zwp-online.info/a.jpg',
       'Publisher': 'zwp-online.info',
     })
   })
@@ -52,6 +53,12 @@ describe('toBubbleRecord', () => {
     const record = toBubbleRecord({ ...article, description: null, image_url: null })
     expect(record).not.toHaveProperty(BUBBLE_FIELDS.description)
     expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url)
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url_text)
+  })
+
+  it('writes the image URL into both the image field and the text field', () => {
+    const record = toBubbleRecord(article)
+    expect(record[BUBBLE_FIELDS.image_url_text]).toBe(record[BUBBLE_FIELDS.image_url])
   })
 
   it('sends no publisher when the URL cannot be parsed', () => {

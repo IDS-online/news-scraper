@@ -17,6 +17,7 @@ export const BUBBLE_FIELDS = {
   description: 'Teaser_Text_DE',
   url: 'Link Source URL',
   image_url: 'Picture',
+  image_url_text: 'Picture URL',
   publisher: 'Publisher',
   published_at: 'Date publishing',
 } as const
@@ -70,7 +71,12 @@ export function toBubbleRecord(article: SyncableArticle): BubbleRecord {
   }
 
   if (article.description) record[BUBBLE_FIELDS.description] = article.description
-  if (article.image_url) record[BUBBLE_FIELDS.image_url] = article.image_url
+  if (article.image_url) {
+    // Bubble keeps the same URL twice: once in the image field it renders from,
+    // once as plain text for anything that needs the raw address.
+    record[BUBBLE_FIELDS.image_url] = article.image_url
+    record[BUBBLE_FIELDS.image_url_text] = article.image_url
+  }
 
   const publisher = toPublisher(article.url)
   if (publisher) record[BUBBLE_FIELDS.publisher] = publisher
