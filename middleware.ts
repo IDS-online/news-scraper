@@ -28,9 +28,17 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  // Protect /dashboard/* and /api/* (except auth routes)
+  // Protect /dashboard/* and /api/* (except auth and cron routes)
+  //
+  // /api/cron/* is called by Vercel Cron, which carries no session cookie — the
+  // session check here would 401 every scheduled run before it reaches the
+  // handler. Those routes authenticate themselves against CRON_SECRET instead,
+  // which is the only credential a cron can present.
   const isProtectedDashboard = pathname.startsWith('/dashboard')
-  const isProtectedApi = pathname.startsWith('/api') && !pathname.startsWith('/api/auth')
+  const isProtectedApi =
+    pathname.startsWith('/api') &&
+    !pathname.startsWith('/api/auth') &&
+    !pathname.startsWith('/api/cron')
 
   if ((isProtectedDashboard || isProtectedApi) && !user) {
     // API routes: return 401 JSON (not a redirect — non-browser consumers need JSON)

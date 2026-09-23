@@ -11,8 +11,18 @@ export const maxDuration = 60
  * Scheduled: daily at 03:00 UTC via vercel.json.
  */
 export async function POST(request: Request) {
+  // Checked before the comparison: without it an unset CRON_SECRET would make
+  // the expected header the literal "Bearer undefined", which anyone can send.
+  // This route is no longer behind the middleware's session check, so its own
+  // guard is the only one left.
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    console.error('[Retention] CRON_SECRET environment variable is not set')
+    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
+  }
+
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
