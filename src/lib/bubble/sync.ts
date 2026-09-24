@@ -22,6 +22,9 @@ const BATCH_SIZE = 100
 /** Ceiling per run, so one backlog cannot exhaust the function's 60s budget. */
 const MAX_ARTICLES_PER_RUN = 1000
 
+/** Parallel stamp updates. Keeps the 60 s budget without flooding Supabase. */
+const STAMP_CONCURRENCY = 25
+
 export interface BubbleSyncResult {
   articles_pending: number
   articles_synced: number
@@ -120,7 +123,11 @@ async function loadUnsyncedArticles(supabase: AdminClient): Promise<SyncableArti
  *
  * A transport failure fails the whole batch — every article stays unsynced and
  * is retried tomorrow. Per-record rejections are counted and reported, but do
- * not stop the remaining batches.
+ * not stop the remaining batches. An HTTP 400 with per-record verdicts is a
+ * partial success and is handled here like any other mixed result (NEWS-19, B-6)
+ * — but only when Bubble returned exactly one status line per submitted record.
+ * Otherwise the client throws and the batch lands in the transport-failure path
+ * above: nothing is stamped, everything is retried (NEWS-19, B-8).
  */
 async function syncBatch(
   supabase: AdminClient,
@@ -143,7 +150,25 @@ async function syncBatch(
     return
   }
 
+  // Belt and braces for the positional mapping: bulkCreate() already guarantees
+  // one verdict per submitted record, but if that guarantee ever breaks again
+  // (NEWS-19, B-11) the loop below would read batch[index] === undefined, stamp
+  // articles with a foreign bubble_id and then abort the whole run with a
+  // TypeError. Fail the batch instead — nothing is stamped, the remaining
+  // batches keep running, and everything here is retried tomorrow.
+  if (outcomes.length !== batch.length) {
+    result.articles_failed += batch.length
+    result.errors.push(
+      `Batch fehlgeschlagen (${batch.length} Artikel): Bubble lieferte ${outcomes.length} Ergebnisse für ${batch.length} Datensätze — Zuordnung nicht möglich`
+    )
+    console.error(
+      `[BubbleSync] Zuordnung nicht möglich: ${outcomes.length} Ergebnisse für ${batch.length} Datensätze, nichts gestempelt. Ergebnisse: ${JSON.stringify(outcomes).slice(0, 2000)}`
+    )
+    return
+  }
+
   const syncedAt = new Date().toISOString()
+  const accepted: { article: SyncableArticle; bubbleId: string | null }[] = []
 
   for (const [index, outcome] of outcomes.entries()) {
     const article = batch[index]
@@ -154,21 +179,51 @@ async function syncBatch(
       continue
     }
 
-    const { error } = await supabase
-      .from('articles')
-      .update({ bubble_synced_at: syncedAt, bubble_id: outcome.id ?? null })
-      .eq('id', article.id)
+    accepted.push({ article, bubbleId: outcome.id ?? null })
+  }
 
-    if (error) {
-      // The record exists in Bubble but we failed to remember that. Flag it
-      // loudly: the next run will send it again and create a duplicate.
-      result.errors.push(
-        `Artikel ${article.id} wurde an Bubble übertragen, konnte aber nicht als synchronisiert markiert werden: ${error.message}`
-      )
-      console.error('[BubbleSync] Stamp fehlgeschlagen für', article.id, error.message)
-      continue
+  await stampSynced(supabase, accepted, syncedAt, result)
+}
+
+/**
+ * Mark the articles Bubble accepted as synced.
+ *
+ * Every row carries its own bubble_id, so the stamps cannot collapse into a
+ * single statement. Running them sequentially meant up to 1000 round-trips per
+ * run and blew the 60 s function budget (NEWS-19, B-3); they are issued in
+ * parallel chunks instead, which turns 100 round-trips per batch into four.
+ */
+async function stampSynced(
+  supabase: AdminClient,
+  accepted: { article: SyncableArticle; bubbleId: string | null }[],
+  syncedAt: string,
+  result: BubbleSyncResult
+): Promise<void> {
+  for (let i = 0; i < accepted.length; i += STAMP_CONCURRENCY) {
+    const chunk = accepted.slice(i, i + STAMP_CONCURRENCY)
+
+    const outcomes = await Promise.all(
+      chunk.map(async ({ article, bubbleId }) => {
+        const { error } = await supabase
+          .from('articles')
+          .update({ bubble_synced_at: syncedAt, bubble_id: bubbleId })
+          .eq('id', article.id)
+        return { article, error }
+      })
+    )
+
+    for (const { article, error } of outcomes) {
+      if (error) {
+        // The record exists in Bubble but we failed to remember that. Flag it
+        // loudly: the next run will send it again and create a duplicate.
+        result.errors.push(
+          `Artikel ${article.id} wurde an Bubble übertragen, konnte aber nicht als synchronisiert markiert werden: ${error.message}`
+        )
+        console.error('[BubbleSync] Stamp fehlgeschlagen für', article.id, error.message)
+        continue
+      }
+
+      result.articles_synced++
     }
-
-    result.articles_synced++
   }
 }

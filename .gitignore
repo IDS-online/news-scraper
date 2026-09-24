@@ -44,3 +44,6 @@ next-env.d.ts
 .obsidian/
 Untitled.md
 .env*
+
+# NEWS-19: backfill undo journals (local, one-off scripts)
+scripts/.backfill-journal-*.json

@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "backfill:bubble": "node scripts/backfill-bubble-synced.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
