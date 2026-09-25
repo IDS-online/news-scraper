@@ -2,7 +2,7 @@
 
 ## Status: In Review
 **Created:** 2026-09-25
-**Last Updated:** 2026-09-25
+**Last Updated:** 2026-09-25 (QA re-verification, round 4)
 
 ## Dependencies
 - Affects NEWS-4 (HTML DOM Scraping Engine) — where the bug lives
@@ -513,5 +513,196 @@ Two conditions before deploying:
 2. Check the `public.articles` row count against RISK-2's 1000-per-run ceiling.
 
 
+### QA Re-Verification — round 2, 2026-09-25
+
+**Build under test:** branch `fix/NEWS-20-image-url-hardening` @ `0392f7d`
+(2 commits ahead of `origin/main`; **not pushed, no pull request open**).
+**Method:** independent re-execution of the CI gate plus an ad-hoc probe suite written from
+this report's own reproduction cases — the bugfix claims were re-tested against the code, not
+read off the report.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | PASS — 0 errors, 13 warnings (all pre-existing, unrelated files) |
+| `npm run typecheck` | PASS — clean |
+| `npm run test` | PASS — 12 files, **209/209** green (matches the claimed count) |
+| `npm run build` | PASS — all routes compile |
+| BUG-1 fix (comma in `srcset` URL) | **CONFIRMED** — `firstSrcsetUrl('https://cdn/a,b.jpg 1x, https://cdn/c.jpg 2x')` → `https://cdn/a,b.jpg`; Cloudinary `/w_300,h_200/` case correct. `srcsetUrls('a.jpg,b.jpg')` → one candidate, which matches the HTML `srcset` grammar (a comma only terminates a candidate when followed by whitespace/descriptor) |
+| BUG-2 fix (http(s) allowlist) | **CONFIRMED with one residual gap — see BUG-6** — `javascript:`, `JavaScript:`, `about:`, `blob:`, `file:`, `data:`, `DATA:`, `' data:,'`, `''`, `'   '`, null, undefined all reject; `http:`, `HTTPS:`, `//cdn/…`, `/media/…`, `a.jpg` all accept |
+| BUG-3 fix (migration predicate) | **CONFIRMED** — migration blanks `btrim(image_url) = ''` and any `lower(btrim(...))` scheme that is not `http`/`https`; the regex `^[a-z][a-z0-9+.-]*:` is character-for-character the helper's `SCHEME_PATTERN` |
+| BUG-4 fix (first *usable* `srcset` candidate) | **CONFIRMED** — `pickImageUrl({src:'data:,', srcset:'data:image/gif;base64,R0lGOD 1x, https://example.com/real.jpg 2x'})` → `https://example.com/real.jpg`. Precedence intact: `src` → `data-src` → `data-lazy-src` → whole `srcset` list |
+| BUG-5 fix (wizard preview) | **CONFIRMED** — `selector-assistant.tsx` imports `pickImageUrl`; both former call sites (`:100`, `:312`) route through the single `imagePreview()` helper; no `getAttribute('src') \|\|` chain remains |
+| Guard in `mapping.ts` | **CONFIRMED** — `Picture`/`Picture URL` set only behind `isUsableImageUrl()`, and the value is `.trim()`ed before sending |
+| Logging in `sync.ts` | **CONFIRMED** — per-article `[BubbleSync] Artikel abgelehnt: <id> ("<title>") — <reason>` at `:199`, summary line at `:85` untouched, `logErrors(result)` at `:87` after it |
+
+**Process note corrected:** round 1 recorded the work as "uncommitted on `main`". It is now
+committed on a feature branch, which satisfies `CLAUDE.md`. Still outstanding: push the branch
+and open a pull request so the `verify`/`migrations` checks run in CI.
+
+#### BUG-6 — Low (new, found in round 2) — the allowlist is bypassable with whitespace inside the scheme
+
+`isUsableImageUrl('java\nscript:alert(1)')` returns `true` and
+`isUsableImageUrl('https:/a')` returns `true`. `SCHEME_PATTERN` is tested against the
+outer-trimmed string only, so any whitespace *inside* the scheme makes the pattern miss and the
+value is treated as scheme-less (and therefore allowed). The value then reaches
+`new URL(src, baseUrl.origin)`, and the WHATWG URL parser strips tab/CR/LF from URLs — so
+`java\nscript:alert(1)` is normalised back to `javascript:alert(1)` and stored in `image_url`.
+
+- Reproduce: scrape `<img src="data:," data-src="java&#10;script:alert(1)">`, or call
+  `isUsableImageUrl('java\nscript:alert(1)')` directly.
+- Impact: the same failure mode BUG-2 was fixed to prevent — a non-http(s) value is stored and
+  sent to Bubble, which rejects the record and the article is lost. **Not an XSS:** the value
+  only ever lands in an `img`/`srcset` attribute, where no current browser executes
+  `javascript:`. Requires a hostile or compromised source page, so the likelihood is low.
+- Priority: Low. Optional before this deploy; the mapping guard uses the same helper, so both
+  layers share the gap. Fix shape: strip ASCII whitespace (`/[\t\n\r\f ]/g`) before matching
+  the scheme, or accept only values that parse to an `http:`/`https:` protocol via `new URL()`.
+
+#### Verdict (round 2)
+
+**Production-ready: YES for the test environment** — unchanged. All five round-1 bugs are
+genuinely fixed in the code, not just in the report, and the gate is green at 209/209. BUG-6 is
+a Low residual in the same helper and does not block. RISK-1 and RISK-2 from round 1 stand
+untouched and still need the two sign-offs named above.
+
+
 ## Deployment
 _To be added by /deploy_
+
+---
+
+## BUG-6 Fix (round 3, 2026-09-25)
+
+**Status: fixed.** All six round-1/round-2 bugs are now closed; no known open bug remains.
+
+### Change
+
+`src/lib/image-url.ts` gained `normalizeImageUrl()`, which removes tab, LF and CR from
+anywhere in the value and then trims it — exactly the characters the WHATWG URL parser
+drops before parsing. `isUsableImageUrl()` matches `SCHEME_PATTERN` against that
+normalised form, so a scheme split by whitespace (`java\nscript:`) can no longer look
+scheme-less and slip through the allowlist. `pickImageUrl()` returns the normalised value,
+so what gets stored in `image_url` is what the parser would have resolved anyway.
+
+`supabase/migrations/20260925090000_news20_reset_bubble_sync_and_clear_placeholder_images.sql`
+mirrors the same rule: the predicate now wraps `image_url` in
+`translate(image_url, E'\t\n\r', '')` before `btrim`/`lower`, keeping the SQL half and the
+TypeScript half stating one rule (the BUG-3 property).
+
+### Verification
+
+Six new tests in `src/lib/image-url.test.ts` cover the scheme split by `\n`, `\t` and `\r`,
+the `da\nta:,` variant, a whitespace-only value, an http address carrying such characters
+(still accepted), the fall-through to `data-src`, and that the stored value is normalised.
+One test asserts the premise directly: `new URL('java\nscript:alert(1)').protocol` is
+`'javascript:'`.
+
+Full CI gate re-run after the change: lint 0 errors (13 pre-existing warnings),
+typecheck clean, **215/215 tests green**, `npm run build` PASS.
+
+### Still open — not bugs
+
+RISK-1 (the migration's only safeguard against a production run is a header comment) and
+RISK-2 (`MAX_ARTICLES_PER_RUN = 1000` vs. the full re-sync) are unchanged and still need
+the two sign-offs before deployment. Process item: the branch has never been pushed, so
+`verify`/`migrations` have not run in CI.
+
+---
+
+## QA Re-Verification — round 4, 2026-09-25
+
+**Build under test:** branch `fix/NEWS-20-image-url-hardening` @ `0392f7d` **plus uncommitted
+working-tree changes** (`src/lib/image-url.ts`, `src/lib/image-url.test.ts`, the migration and
+this spec). The round-3 BUG-6 fix is *not committed*.
+**Method:** independent re-execution of the CI gate plus an ad-hoc probe suite driven by
+character codes rather than by the report's prose, so the allowlist was attacked rather than
+read.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | PASS — 0 errors, 13 warnings (all pre-existing, unrelated files) |
+| `npm run typecheck` | PASS — clean |
+| `npm run test` | PASS — 12 files, **215/215** green (matches the claimed count) |
+| `npm run build` | PASS — all routes compile |
+| BUG-6 fix (whitespace inside the scheme) | **CONFIRMED FIXED** — `isUsableImageUrl` returns `false` for `java\nscript:`, `java\tscript:`, `java\rscript:` and `da\nta:,`; `pickImageUrl({src:'data:,', dataSrc:'java\nscript:alert(1)', dataLazySrc:'https://x/real.jpg'})` → `https://x/real.jpg`. Vertical tab (`\v`) and form feed (`\f`) are also caught, via `trim()` |
+| BUG-6 migration mirror | **CONFIRMED** — the SQL wraps `image_url` in `translate(image_url, E'\t\n\r', '')` before `btrim`/`lower`, and the regex `^[a-z][a-z0-9+.-]*:` is character-for-character the helper's `SCHEME_PATTERN` |
+| BUG-1 (comma in `srcset` URL) | **still fixed** — `srcsetUrls('https://cdn/a,b.jpg 1x, https://cdn/c.jpg 2x')` → two candidates, first is `https://cdn/a,b.jpg`; Cloudinary `/w_300,h_200/` preserved |
+| BUG-4 (first *usable* candidate) | **still fixed** — `data:` placeholder in slot 1 falls through to `https://example.com/real.jpg` |
+| BUG-2 allowlist | **holds for the ordinary cases** — `javascript:`, `data:`, `about:`, `blob:`, `file:` reject; `http:`, `HTTPS:`, `//cdn/…`, `/m/a.jpg`, `a.jpg` accept. One residual, see BUG-7 |
+| BUG-5 (wizard preview) | **still fixed** — `selector-assistant.tsx:14` imports `pickImageUrl`; no `getAttribute('src') \|\|` chain remains anywhere in `src/` |
+| Single extraction site | **CONFIRMED** — `pickImageUrl` has exactly one caller in the scraper (`html-engine.ts:216`) and one in the wizard; `isUsableImageUrl` one in `mapping.ts:80`. No second copy of the old chain |
+
+### BUG-7 — Low (new, round 4) — a leading C0 control character still bypasses the allowlist
+
+`normalizeImageUrl()` strips only tab, LF and CR. The WHATWG URL parser strips **all** leading
+C0 controls (U+0000–U+001F) and spaces, and `String.prototype.trim()` does not remove the
+non-whitespace ones (U+0000–U+0008, U+000E–U+001F). So those characters make `SCHEME_PATTERN`
+miss, the value looks scheme-less, and it is accepted.
+
+- Reproduce (character codes, not literals):
+  - `isUsableImageUrl(String.fromCharCode(1) + 'javascript:alert(1)')` → `true`
+  - `isUsableImageUrl(String.fromCharCode(0) + 'data:,')` → `true`
+  - `pickImageUrl({src: String.fromCharCode(0) + 'data:,'})` → `"\u0000data:,"`
+  - `html-engine.ts:226` then calls `new URL(src, baseUrl.origin)`, which normalises it back to
+    `data:,` / `javascript:alert(1)` and stores exactly that in `image_url`.
+- Verified boundary: codes 0, 1 and 31 are accepted (bug); 11 (`\v`), 12 (`\f`) and 32 (space)
+  are correctly rejected because `trim()` removes them.
+- Impact: identical to BUG-6 and to the ticket's own root cause — a non-http(s) value is stored
+  and sent, Bubble rejects the record, one article is lost. **Not an XSS:** the value only ever
+  lands in an `img`/`srcset` attribute, where no current browser executes `javascript:`.
+  Requires a hostile or compromised source page, so likelihood is low.
+- The migration shares the gap: `translate(..., E'\t\n\r', '')` leaves the other C0 controls in
+  place, so such a row survives the clean-up. The mapping guard catches it on send, so no record
+  is lost from the database — but the two halves again state slightly different rules.
+- Priority: Low. Does not block this deploy. Fix shape: widen the strip to
+  `/[\u0000-\u001F\u007F]/g` (and `E'\x00'`–style equivalent in SQL), or — more robustly and
+  ending this class of bug for good — decide usability by `new URL(value, base).protocol` and
+  drop the regex allowlist entirely.
+
+### Observation (not a bug) — `mapping.ts` sends the un-normalised value
+
+`mapping.ts:83` sends `article.image_url.trim()`, while `pickImageUrl()` returns
+`normalizeImageUrl(...)`. For a stored `https://x/a<LF>.jpg` the guard accepts it (correctly —
+the parser would too) but Bubble receives the value with the newline still in it. Cosmetic and
+unreachable from the scraper (which normalises before storing); worth aligning to
+`normalizeImageUrl()` when BUG-7 is addressed, so "one shared rule" holds on the send path too.
+
+### Regression testing (round 4)
+
+Full suite green at 215/215 across 12 files — NEWS-3 RSS (28), NEWS-4 HTML engine (19),
+NEWS-5 scheduler (13), NEWS-14 feed detection (10), NEWS-19 sync/client/mapping (12/34/13),
+NEWS-1/2/9 validations. No pre-existing test broken. `npm run build` exit 0.
+
+### Cross-browser and responsive (round 4)
+
+Still not applicable, assessed rather than skipped. The round-3 diff touches `src/lib/` and
+`supabase/migrations/` only — no component, page, style or API response shape changed, so
+Chrome/Firefox/Safari and 375/768/1440px behaviour is unchanged by construction.
+
+### Security audit (round 4)
+
+No new vector. The `data:` scheme — the only one with real XSS potential in an `img`/`srcset`
+context — is filtered more strictly than before on both layers. BUG-7 is a *correctness* gap
+(a rejected record) rather than an exploitable one. No secrets, env vars, auth, RLS or route
+handlers were touched. The log-injection note from round 1 (unescaped scraped titles in
+`console.error`) stands unchanged: cosmetic, no credentials logged.
+
+### Process items (unchanged or new)
+
+1. **NEW — the round-3 BUG-6 fix is uncommitted.** `git status` shows `image-url.ts`,
+   `image-url.test.ts`, the migration and this spec modified but not committed. Commit it before
+   anything else, or the fix will not ship.
+2. **Still open — the branch has never been pushed and no pull request exists.** The `verify` and
+   `migrations` checks have therefore never run in CI. `CLAUDE.md` requires both.
+3. **RISK-1 unchanged** — the migration's only safeguard against a production run is its header
+   comment. Needs an explicit, recorded sign-off at deploy time.
+4. **RISK-2 unchanged** — `MAX_ARTICLES_PER_RUN = 1000` versus a full re-sync. Check the
+   `public.articles` row count before deploying.
+
+### Verdict (round 4)
+
+**Production-ready: YES for the test environment.** BUG-6 is genuinely fixed in the code, the
+gate is green at 215/215, and no Critical or High defect exists. BUG-7 is a new Low residual of
+the same class in the same helper and does not block. The three deploy conditions are: commit and
+push the work and open a pull request, accept RISK-1 in writing, and check the row count for
+RISK-2.
