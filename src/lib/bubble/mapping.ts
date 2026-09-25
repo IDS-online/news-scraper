@@ -10,6 +10,8 @@
  * two are not transferred.
  */
 
+import { isUsableImageUrl } from '@/lib/image-url'
+
 /** The Bubble side of one field pairing. */
 export const BUBBLE_FIELDS = {
   title: 'Headline_DE',
@@ -71,11 +73,16 @@ export function toBubbleRecord(article: SyncableArticle): BubbleRecord {
   }
 
   if (article.description) record[BUBBLE_FIELDS.description] = article.description
-  if (article.image_url) {
+  // NEWS-20: second line of defence. A `data:` placeholder (or a blank value)
+  // counts as "no image", whatever the database holds — Bubble's "Picture"
+  // field rejects the entire record over an invalid address, so an article
+  // without a picture is strictly better than an article that never arrives.
+  if (isUsableImageUrl(article.image_url)) {
     // Bubble keeps the same URL twice: once in the image field it renders from,
     // once as plain text for anything that needs the raw address.
-    record[BUBBLE_FIELDS.image_url] = article.image_url
-    record[BUBBLE_FIELDS.image_url_text] = article.image_url
+    const imageUrl = article.image_url.trim()
+    record[BUBBLE_FIELDS.image_url] = imageUrl
+    record[BUBBLE_FIELDS.image_url_text] = imageUrl
   }
 
   const publisher = toPublisher(article.url)

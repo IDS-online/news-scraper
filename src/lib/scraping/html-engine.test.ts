@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { resolveUrl, normalizeUrl, parseDate } from '@/lib/scraping/html-engine'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { resolveUrl, normalizeUrl, parseDate, scrapeHtmlPreview } from '@/lib/scraping/html-engine'
 
 describe('resolveUrl', () => {
   const base = new URL('https://example.com/news/index.html')
@@ -62,5 +62,82 @@ describe('parseDate', () => {
 
   it('returns null for text containing no date', () => {
     expect(parseDate('weder Datum noch Uhrzeit')).toBeNull()
+  })
+})
+
+/**
+ * NEWS-20: image extraction end-to-end through scrapeHtmlPreview().
+ *
+ * ZM-online ships `<img src="data:," data-src="https://real-url...">`. The old
+ * `??` chain stored the placeholder because the attribute was present, and
+ * Bubble then rejected the whole article. These cases lock the new behaviour in.
+ */
+describe('scrapeHtmlPage image extraction', () => {
+  const config = {
+    url: 'https://example.com/news',
+    selector_container: 'article',
+    selector_title: 'h2',
+    selector_link: 'a',
+    selector_image: 'img',
+  }
+
+  function mockPage(imgTag: string) {
+    const html = `<html><body><article><h2>Schlagzeile</h2><a href="/artikel/1">x</a>${imgTag}</article></body></html>`
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+    )
+  }
+
+  async function imageUrlFor(imgTag: string) {
+    mockPage(imgTag)
+    const result = await scrapeHtmlPreview(config)
+    expect(result.articles).toHaveLength(1)
+    return result.articles[0].image_url
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('uses data-src when src holds the data: placeholder', async () => {
+    expect(await imageUrlFor('<img src="data:," data-src="https://cdn.example.com/real.jpg">')).toBe(
+      'https://cdn.example.com/real.jpg'
+    )
+  })
+
+  it('uses data-lazy-src when src is a placeholder and data-src is missing', async () => {
+    expect(
+      await imageUrlFor('<img src="data:," data-lazy-src="https://cdn.example.com/lazy.jpg">')
+    ).toBe('https://cdn.example.com/lazy.jpg')
+  })
+
+  it('uses the first srcset candidate as the last resort', async () => {
+    expect(
+      await imageUrlFor('<img src="data:," srcset="/media/small.jpg 480w, /media/large.jpg 1200w">')
+    ).toBe('https://example.com/media/small.jpg')
+  })
+
+  it('yields null when no attribute holds a usable address', async () => {
+    expect(await imageUrlFor('<img src="data:,">')).toBeNull()
+  })
+
+  it('leaves a normal src untouched (regression guard for the working sources)', async () => {
+    expect(await imageUrlFor('<img src="https://cdn.example.com/a.jpg">')).toBe(
+      'https://cdn.example.com/a.jpg'
+    )
+  })
+
+  it('resolves a relative data-src against the origin, as before', async () => {
+    expect(await imageUrlFor('<img src="data:," data-src="/media/a.jpg">')).toBe(
+      'https://example.com/media/a.jpg'
+    )
+  })
+
+  it('still stores the article when no image is found', async () => {
+    mockPage('<img src="data:,">')
+    const result = await scrapeHtmlPreview(config)
+    expect(result.articles[0].title).toBe('Schlagzeile')
+    expect(result.articles[0].url).toBe('https://example.com/artikel/1')
   })
 })

@@ -84,8 +84,25 @@ export async function runBubbleSync(): Promise<BubbleSyncResult> {
   console.log(
     `[BubbleSync] Fertig: ${result.articles_synced} übertragen, ${result.articles_failed} fehlgeschlagen`
   )
+  logErrors(result)
 
   return result
+}
+
+/**
+ * NEWS-20: write the collected reasons to the log when a run finishes.
+ *
+ * They were already gathered in `result.errors`, but only the caller could see
+ * them. Repeating them at the end keeps the whole picture of a run in one place
+ * in the Vercel log, without having to query the database.
+ */
+function logErrors(result: BubbleSyncResult): void {
+  if (result.errors.length === 0) return
+
+  console.error(`[BubbleSync] ${result.errors.length} Fehler in diesem Lauf:`)
+  for (const message of result.errors) {
+    console.error(`[BubbleSync]   - ${message}`)
+  }
 }
 
 /**
@@ -174,8 +191,14 @@ async function syncBatch(
     const article = batch[index]
 
     if (!outcome.success) {
+      const reason = outcome.error ?? 'unbekannter Fehler'
       result.articles_failed++
-      result.errors.push(`"${article.title}": ${outcome.error ?? 'unbekannter Fehler'}`)
+      result.errors.push(`"${article.title}": ${reason}`)
+      // NEWS-20: one line per rejected article, with its ID, so the reason shows
+      // up in the Vercel log instead of only in this function's return value.
+      console.error(
+        `[BubbleSync] Artikel abgelehnt: ${article.id} ("${article.title}") — ${reason}`
+      )
       continue
     }
 

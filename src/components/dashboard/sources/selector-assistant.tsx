@@ -11,6 +11,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { AlertCircle, ChevronDown, Loader2, Wand2 } from 'lucide-react'
+import { pickImageUrl } from '@/lib/image-url'
 
 /** Maximum bytes of pasted HTML to process (500 KB). */
 const MAX_HTML_SIZE = 500 * 1024
@@ -73,13 +74,30 @@ function buildSelector(el: Element): string {
 }
 
 /**
+ * The image address the scraper would store for this element.
+ *
+ * NEWS-20 BUG-5: the wizard used its own `||` chain, so it still showed the
+ * lazy-loading placeholder (`data:,`) while the scraper already resolved the
+ * real URL. Both now go through pickImageUrl().
+ */
+function imagePreview(el: Element): string {
+  return (
+    pickImageUrl({
+      src: el.getAttribute('src'),
+      dataSrc: el.getAttribute('data-src'),
+      dataLazySrc: el.getAttribute('data-lazy-src'),
+      srcset: el.getAttribute('srcset'),
+    }) ?? '(kein Bild)'
+  )
+}
+
+/**
  * Extract a short text preview from an element.
  */
 function previewText(el: Element, maxLen = 60): string {
-  // For images, show src
+  // For images, show the address the scraper would actually store (NEWS-20)
   if (el.tagName === 'IMG') {
-    const src = el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-lazy-src') || ''
-    return truncate(src, maxLen)
+    return truncate(imagePreview(el), maxLen)
   }
 
   // For time elements, show datetime
@@ -291,14 +309,7 @@ function analyzeHtml(htmlString: string): FieldResult[] {
     doc,
     containerSel,
     ['img[src]', '[class*="image"] img', '[class*="thumb"] img', '[data-src]', '[data-lazy-src]'],
-    (el) => {
-      const src =
-        el.getAttribute('src') ||
-        el.getAttribute('data-src') ||
-        el.getAttribute('data-lazy-src') ||
-        ''
-      return truncate(src, 60)
-    }
+    (el) => truncate(imagePreview(el), 60)
   )
   if (images.length > 0) {
     results.push({ field: 'selector_image', label: 'Bild', candidates: images })
