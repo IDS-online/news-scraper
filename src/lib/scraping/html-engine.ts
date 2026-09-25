@@ -3,6 +3,7 @@ import * as chrono from 'chrono-node'
 import { franc } from 'franc'
 import type { NormalizedArticle, ScrapeResult, ScrapeError } from '@/types/article'
 import type { Source } from '@/types/source'
+import { pickImageUrl } from '@/lib/image-url'
 
 // ---- Configuration ----
 
@@ -208,7 +209,16 @@ export async function scrapeHtmlPage(source: Source): Promise<ScrapeResult> {
       if (source.selector_image) {
         const imgEl = $container.find(source.selector_image)
         if (imgEl.length > 0) {
-          const src = imgEl.attr('src') ?? imgEl.attr('data-src') ?? imgEl.attr('data-lazy-src')
+          // NEWS-20: a present `src` is not necessarily a usable one. Lazy-loading
+          // sources put a `data:` placeholder there and the real address in
+          // data-src/data-lazy-src/srcset, so we ask "is this value usable?"
+          // instead of "does this attribute exist?".
+          const src = pickImageUrl({
+            src: imgEl.attr('src'),
+            dataSrc: imgEl.attr('data-src'),
+            dataLazySrc: imgEl.attr('data-lazy-src'),
+            srcset: imgEl.attr('srcset'),
+          })
           if (src) {
             try {
               imageUrl = new URL(src, baseUrl.origin).toString()

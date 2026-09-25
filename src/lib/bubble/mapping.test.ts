@@ -61,6 +61,31 @@ describe('toBubbleRecord', () => {
     expect(record[BUBBLE_FIELDS.image_url_text]).toBe(record[BUBBLE_FIELDS.image_url])
   })
 
+  // NEWS-20: second line of defence — a placeholder must never reach Bubble,
+  // whatever the database happens to hold.
+  it('treats the lazy-loading placeholder "data:," as no image at all', () => {
+    const record = toBubbleRecord({ ...article, image_url: 'data:,' })
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url)
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url_text)
+  })
+
+  it('treats any other data URI as no image either', () => {
+    const record = toBubbleRecord({ ...article, image_url: 'data:image/png;base64,iVBORw0KGgo=' })
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url)
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url_text)
+  })
+
+  it('treats a whitespace-only image_url as no image', () => {
+    const record = toBubbleRecord({ ...article, image_url: '   ' })
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url)
+    expect(record).not.toHaveProperty(BUBBLE_FIELDS.image_url_text)
+  })
+
+  it('still sends a normal image URL (regression guard)', () => {
+    const record = toBubbleRecord(article)
+    expect(record[BUBBLE_FIELDS.image_url]).toBe('https://www.zwp-online.info/a.jpg')
+  })
+
   it('sends no publisher when the URL cannot be parsed', () => {
     const record = toBubbleRecord({ ...article, url: 'not-a-url' })
     expect(record).not.toHaveProperty(BUBBLE_FIELDS.publisher)
