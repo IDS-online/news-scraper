@@ -187,3 +187,36 @@ describe('pickImageUrl', () => {
     expect(pickImageUrl({})).toBeNull()
   })
 })
+
+describe('isUsableImageUrl — whitespace inside the scheme (NEWS-20 BUG-6)', () => {
+  it('rejects a scheme split by a newline, tab or CR', () => {
+    expect(isUsableImageUrl('java\nscript:alert(1)')).toBe(false)
+    expect(isUsableImageUrl('java\tscript:alert(1)')).toBe(false)
+    expect(isUsableImageUrl('java\rscript:alert(1)')).toBe(false)
+    expect(isUsableImageUrl('da\nta:,')).toBe(false)
+  })
+
+  it('matches what the URL parser sees — it strips those characters too', () => {
+    expect(new URL('java\nscript:alert(1)').protocol).toBe('javascript:')
+  })
+
+  it('still accepts an http(s) address that carries such characters', () => {
+    expect(isUsableImageUrl('htt\nps://example.com/a.jpg')).toBe(true)
+  })
+
+  it('rejects a value that is only whitespace of that kind', () => {
+    expect(isUsableImageUrl('\n\t\r')).toBe(false)
+  })
+})
+
+describe('pickImageUrl — normalisation (NEWS-20 BUG-6)', () => {
+  it('falls through a whitespace-obfuscated javascript: src', () => {
+    expect(
+      pickImageUrl({ src: 'java\nscript:alert(1)', dataSrc: 'https://example.com/real.jpg' })
+    ).toBe('https://example.com/real.jpg')
+  })
+
+  it('stores the normalised form, not the raw attribute value', () => {
+    expect(pickImageUrl({ src: 'https://example.com/\na.jpg' })).toBe('https://example.com/a.jpg')
+  })
+})

@@ -8,8 +8,9 @@
 --      "Picture" field rejects such a value and refuses the whole record; NULL
 --      means "no image", which the Bubble mapping skips silently.
 --      The predicate mirrors isUsableImageUrl() in src/lib/image-url.ts: it
---      trims and lower-cases first, so ' DATA:,' is caught too, and it rejects
---      every non-http(s) scheme rather than only `data:`.
+--      strips the tab/CR/LF characters the URL parser drops, then trims and
+--      lower-cases, so ' DATA:,' and 'java<LF>script:' are both caught, and it
+--      rejects every non-http(s) scheme rather than only `data:`.
 --
 -- !! TEST ENVIRONMENT ONLY !!
 -- Clearing the stamps makes the sync re-send articles Bubble has already accepted.
@@ -30,10 +31,10 @@ set image_url = null
 where image_url is not null
   and (
     -- empty or whitespace-only
-    btrim(image_url) = ''
+    btrim(translate(image_url, E'\t\n\r', '')) = ''
     -- carries a URI scheme that is neither http nor https
     or (
-      lower(btrim(image_url)) ~ '^[a-z][a-z0-9+.-]*:'
-      and lower(btrim(image_url)) !~ '^https?:'
+      lower(btrim(translate(image_url, E'\t\n\r', ''))) ~ '^[a-z][a-z0-9+.-]*:'
+      and lower(btrim(translate(image_url, E'\t\n\r', ''))) !~ '^https?:'
     )
   );

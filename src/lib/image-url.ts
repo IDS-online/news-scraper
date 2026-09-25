@@ -16,6 +16,25 @@
 const SCHEME_PATTERN = /^([a-z][a-z0-9+.-]*):/i
 
 /**
+ * Tab, LF and CR — the characters the WHATWG URL parser removes from anywhere
+ * inside a URL before parsing it.
+ */
+const URL_STRIPPED_WHITESPACE = /[\t\n\r]/g
+
+/**
+ * Bring a raw attribute value into the form the URL parser will actually see
+ * (NEWS-20 BUG-6).
+ *
+ * Without this, `java\nscript:alert(1)` slips past the scheme allowlist — the
+ * embedded newline makes SCHEME_PATTERN miss, so the value looks scheme-less
+ * and is accepted — and `new URL()` then normalises it back to
+ * `javascript:alert(1)`, the exact value the allowlist exists to reject.
+ */
+export function normalizeImageUrl(value: string): string {
+  return value.replace(URL_STRIPPED_WHITESPACE, '').trim()
+}
+
+/**
  * True when the value can be used as an image address.
  *
  * This is an allowlist, not a `data:` blacklist (NEWS-20 BUG-2): a value that
@@ -25,13 +44,16 @@ const SCHEME_PATTERN = /^([a-z][a-z0-9+.-]*):/i
  *
  * Scheme-less values (`/media/a.jpg`, `//cdn/a.jpg`, `a.jpg`) are accepted:
  * resolving them against the page URL is the caller's job.
+ *
+ * The value is normalised first (NEWS-20 BUG-6) so whitespace hidden inside the
+ * scheme cannot smuggle a rejected scheme past the match.
  */
 export function isUsableImageUrl(value: string | null | undefined): value is string {
   if (!value) return false
-  const trimmed = value.trim()
-  if (trimmed.length === 0) return false
+  const normalized = normalizeImageUrl(value)
+  if (normalized.length === 0) return false
 
-  const scheme = SCHEME_PATTERN.exec(trimmed)
+  const scheme = SCHEME_PATTERN.exec(normalized)
   if (!scheme) return true
 
   const protocol = scheme[1].toLowerCase()
@@ -110,7 +132,7 @@ export function pickImageUrl(attrs: {
   ]
 
   for (const candidate of candidates) {
-    if (isUsableImageUrl(candidate)) return candidate.trim()
+    if (isUsableImageUrl(candidate)) return normalizeImageUrl(candidate)
   }
 
   return null
