@@ -51,9 +51,18 @@ regression in NEWS-19.
 - [ ] When `src` is a `data:` URI, the extraction falls through to `data-src`,
       `data-lazy-src` and `srcset`, in that order (the existing precedence of `data-src`
       over `data-lazy-src` is preserved; `srcset` is added as a new, final fallback step).
-- [ ] For `srcset`, the first URL of the comma-separated candidate list is used (format:
-      `url descriptor, url descriptor, ...` — only the URL before the first
-      whitespace/comma is taken).
+- [ ] For `srcset`, the first **usable** URL of the candidate list is used. _Revised
+      2026-09-25 (QA BUG-4): the original wording required the literal first candidate.
+      A source that puts a `data:` placeholder in the first `srcset` slot would then
+      yield NULL even though a real image sits behind it — the exact failure this ticket
+      exists to remove. The rule is now: iterate the candidates in source order and take
+      the first one that passes `isUsableImageUrl()`._
+      Candidate splitting follows the HTML `srcset` grammar, not a naive comma split
+      (QA BUG-1): a comma only separates candidates when it terminates a candidate
+      (followed by a descriptor such as ` 2x`/` 300w`, or by the end of the list), so
+      commas *inside* a URL — routine in CDN transformation paths such as Cloudinary's
+      `/w_300,h_200/` — are preserved. Within a candidate the URL is the run up to the
+      first whitespace.
 - [ ] If none of the four attributes yields a usable (non-`data:`, non-empty) URL, then
       `image_url = NULL` is the correct result — articles without an image are silently
       skipped by the Bubble mapping (existing behaviour in
@@ -74,8 +83,12 @@ regression in NEWS-19.
 ### 3. One-off data correction (SQL migration) — _revised 2026-09-25, supersedes the original narrow scope_
 - [ ] A new Supabase migration (`npx supabase@latest migration new ...`) clears the Bubble
       sync stamps on **all** articles: `bubble_synced_at = NULL` and `bubble_id = NULL`.
-- [ ] The same migration sets `image_url = NULL` for every article whose `image_url` is a
-      `data:` URI (`like 'data:%'`).
+- [ ] The same migration sets `image_url = NULL` for every article whose `image_url` is
+      not a usable http(s) address. _Revised 2026-09-25 (QA BUG-3): the original
+      `like 'data:%'` predicate was case-sensitive and did not trim, so `DATA:,` and
+      ` data:,` survived, and it diverged from the TypeScript helper it claims to mirror.
+      The predicate now trims and lower-cases and rejects every non-http(s) scheme, so the
+      SQL and `isUsableImageUrl()` state the same rule._
 - [ ] Rationale for the widened scope: the PM has confirmed the Bubble **test** environment
       is wiped manually before deployment. Emptying Bubble without clearing the stamps would
       permanently skip the 136 already-stamped articles, so the reset is required for the
@@ -282,9 +295,9 @@ This is backend-only work — run `/backend`, not `/frontend`.
 |---|---|
 | Acceptance criteria | **24 of 24 passed**, 0 failed |
 | Documented edge cases | **7 of 7 passed** |
-| Bugs found | 0 Critical · 0 High · 1 Medium · 4 Low |
-| CI gate (lint/typecheck/test/build) | **PASS** — 0 errors, 198/198 tests green, build succeeds |
-| Security audit | No vulnerabilities introduced. 1 hardening gap (BUG-2), 1 deployment hazard (RISK-1) |
+| Bugs found | 0 Critical · 0 High · 1 Medium · 4 Low — **all 5 FIXED** (2026-09-25, `/backend` follow-up) |
+| CI gate (lint/typecheck/test/build) | **PASS** — 0 errors, 198/198 tests green, build succeeds · **re-run after bugfixes: 209/209 green** |
+| Security audit | No vulnerabilities introduced. Hardening gap (BUG-2) closed — http(s) allowlist. 1 deployment hazard (RISK-1) still open |
 | **Production-ready** | **YES for the test environment**, conditional on RISK-1 being consciously accepted |
 
 ### 1. Image extraction (html-engine.ts) — 6/6 PASS
@@ -337,13 +350,18 @@ multi-resolution `srcset` takes the first · source without `selector_image` unc
 genuine `data:image/...;base64` becomes NULL (accepted trade-off, behaves as specified) ·
 migration idempotent on a clean database · already-stamped articles are reset and re-sent.
 
-### Bugs found
+### Bugs found — all fixed 2026-09-25
 
-> **All five bugs were fixed on 2026-09-25** on branch `fix/NEWS-20-image-url-hardening`,
-> before merge. Each fix carries a regression test using the reproduction case below.
-> Resolution notes are appended to each entry.
+**Fix round (`/backend`, 2026-09-25).** All five bugs below were fixed in the same working
+tree that QA assessed. Gate re-run afterwards: lint 0 errors (13 pre-existing warnings),
+typecheck clean, **209/209 tests green** (198 baseline + 11 new regression tests, one per
+bug using the concrete example from this report), `npm run build` exit 0.
+`MAX_ARTICLES_PER_RUN` and the deploy behaviour were not touched, so RISK-1 and RISK-2
+below stand unchanged and still need the two sign-offs named in the verdict.
+BUG-4's fix deviates from AC 1.3 as originally written; AC 1.3 has been revised above and
+the reasoning recorded there.
 
-**BUG-1 — Medium — `srcset` URL containing a comma is silently truncated**
+**BUG-1 — Medium — `srcset` URL containing a comma is silently truncated — ✅ FIXED**
 `firstSrcsetUrl()` splits on `/[\s,]+/`, but a comma is legal inside a URL and is common in
 CDN paths (Cloudinary/imgix transformation segments such as `.../w_300,h_200/a.jpg`).
 - Reproduce: `firstSrcsetUrl('https://cdn/a,b.jpg 1x, https://cdn/c.jpg 2x')`
@@ -353,11 +371,15 @@ CDN paths (Cloudinary/imgix transformation segments such as `.../w_300,h_200/a.j
   layer down. Only reachable when `src`, `data-src` and `data-lazy-src` are all unusable, which
   keeps it out of Critical territory.
 - Priority: fix before deploy is optional; fix before a second lazy-loading source is onboarded.
-- **FIXED.** `srcsetUrls()` now follows the HTML parsing rule: a candidate URL is a run of
-  non-whitespace characters, and only *trailing* commas terminate it. `firstSrcsetUrl()` is a
-  thin wrapper over it.
+- **Fix:** `srcsetUrls()` in `src/lib/image-url.ts` replaces the `/[\s,]+/` split with a scan
+  following the HTML `srcset` grammar — the URL is the run of non-whitespace characters, and a
+  comma only separates candidates when it terminates one (trailing comma, or after the
+  descriptor). `firstSrcsetUrl()` now delegates to it.
+- **Regression tests:** `firstSrcsetUrl('https://cdn/a,b.jpg 1x, https://cdn/c.jpg 2x')` →
+  `https://cdn/a,b.jpg`, plus the Cloudinary `/w_300,h_200/` case and a `srcsetUrls()` case with
+  a comma in both candidates.
 
-**BUG-2 — Low (security hardening) — the rule is a `data:` blacklist, not an http(s) allowlist**
+**BUG-2 — Low (security hardening) — the rule is a `data:` blacklist, not an http(s) allowlist — ✅ FIXED**
 `isUsableImageUrl('javascript:alert(1)')` and `isUsableImageUrl('vbscript:...')` both return
 `true`, and `new URL()` preserves the scheme, so such a value would be stored in `image_url` and
 sent to Bubble as `Picture`.
@@ -366,37 +388,51 @@ sent to Bubble as `Picture`.
 - Real impact is the same failure mode as this ticket: Bubble rejects the record, one article is
   lost. An allowlist (`http:` / `https:` / protocol-relative) would close both at once.
 - Priority: low, but it is a one-line change in the shared helper.
-- **FIXED.** `isUsableImageUrl()` is now an allowlist: a value carrying a URI scheme is accepted
-  only for `http:`/`https:`; scheme-less values (`/media/a.jpg`, `//cdn/a.jpg`, `a.jpg`) stay
-  accepted, since resolving them is the caller's job.
+- **Fix:** `isUsableImageUrl()` is now an allowlist: a value carrying a URI scheme is accepted
+  only for `http:`/`https:` (case-insensitive, after trimming). Scheme-less values —
+  protocol-relative `//cdn/a.jpg` and site-relative `/media/a.jpg` — stay accepted, since
+  resolving them against the page URL is the caller's job.
+- **Regression tests:** `javascript:alert(1)`, `JavaScript:alert(1)`, `about:blank`,
+  `blob:…`, `file:///etc/passwd` all reject; `http:`/`HTTPS:`/`//cdn…` all accept; and
+  `pickImageUrl({src:'javascript:alert(1)', dataSrc:'…real.jpg'})` falls through correctly.
 
-**BUG-3 — Low — migration `like 'data:%'` is case-sensitive and does not trim**
+**BUG-3 — Low — migration `like 'data:%'` is case-sensitive and does not trim — ✅ FIXED**
 The TypeScript helper lower-cases and trims; the SQL does neither. Rows holding `DATA:,` or
 ` data:,` survive the clean-up. Harmless in practice (the mapping guard stops them from being
 sent), but the two halves of the "same shared rule" claim differ. `where lower(trim(image_url))
 like 'data:%'` would align them.
-- **FIXED.** The migration now trims and lower-cases, and mirrors the allowlist rather than the
-  `data:` blacklist — it also blanks whitespace-only values and every other non-http(s) scheme.
+- **Fix:** the migration predicate now mirrors the helper exactly — it blanks `image_url` when
+  `btrim(image_url) = ''` or when `lower(btrim(image_url))` carries a scheme that is not
+  `http`/`https`. So `'DATA:,'` and `' data:,'` are caught, as is any other non-http(s) scheme,
+  matching the BUG-2 allowlist rather than only `data:`. AC 3.2 revised above.
+- **Verification:** the SQL is the same rule as the helper, which is covered by the
+  `isUsableImageUrl()` case tests (`'DATA:,'`, `'  data:,  '`, `'   '`).
 
-**BUG-4 — Low — `srcset` whose first candidate is itself a `data:` URI yields NULL**
+**BUG-4 — Low — `srcset` whose first candidate is itself a `data:` URI yields NULL — ✅ FIXED**
 `pickImageUrl({src:'data:,', srcset:'data:image/gif;base64,R0lGOD 1x, https://cdn/real.jpg 2x'})`
 → `null`, even though a usable candidate exists later in the list. This matches AC 1.3 as
 written ("the first URL is used"), so it is not a spec violation — logged so the trade-off is a
 recorded decision rather than an accident.
-- **FIXED.** `pickImageUrl()` now iterates every `srcset` candidate in source order and takes the
-  first that passes `isUsableImageUrl()`. AC 1.3 was amended accordingly (see the criteria table
-  above) — this is a deliberate spec change, not a silent deviation.
+- **Fix:** `pickImageUrl()` now iterates *all* `srcset` candidates in source order and takes the
+  first that passes `isUsableImageUrl()`, instead of testing only the first one. `src`,
+  `data-src` and `data-lazy-src` keep their precedence ahead of the whole `srcset` list.
+- **Spec impact:** this deviates from AC 1.3 as originally written ("the first URL is used").
+  AC 1.3 has been revised above with the reasoning — a placeholder in the first slot is the same
+  wrong-value failure the ticket exists to remove, so "first usable" is the correct rule.
+- **Regression test:** `pickImageUrl({src:'data:,', srcset:'data:image/gif;base64,R0lGOD 1x,
+  https://example.com/real.jpg 2x'})` → `https://example.com/real.jpg`.
 
-**BUG-5 — Low — the visual wizard still shows the placeholder**
+**BUG-5 — Low — the visual wizard still shows the placeholder — ✅ FIXED**
 `src/components/dashboard/sources/selector-assistant.tsx:81` and `:293-300` still use the old
 `getAttribute('src') || getAttribute('data-src') || ...` chain. An admin configuring a
 lazy-loading source sees `data:,` in the selector preview even though the scraper now resolves
 the real image — misleading, and it may push someone to pick a worse selector. Out of the stated
 scope of this ticket (spec names only `html-engine.ts` and `mapping.ts`), but the same root
 cause.
-- **FIXED.** Both call sites go through a local `imagePreview()` helper that delegates to
-  `pickImageUrl()`; when nothing usable is found the preview shows `(kein Bild)` instead of a
-  placeholder string.
+- **Fix:** both call sites now go through the shared `pickImageUrl()` via a single
+  `imagePreview()` helper, so the wizard shows exactly the address the scraper would store
+  (or `(kein Bild)`). Out of the ticket's stated scope but same root cause and a strict
+  improvement, so it was fixed alongside.
 
 ### Risks (not bugs — for explicit sign-off)
 
@@ -466,6 +502,11 @@ existing, already-tested card components. No rendering path changed, so Chrome/F
 **Production-ready: YES** (for the intended test-environment deployment). Every acceptance
 criterion passes, the CI gate is green, and no Critical or High *defect* exists. The one Medium
 bug (BUG-1) is in a fallback path that the currently affected source does not reach.
+
+**Update 2026-09-25 after the bugfix round:** all five bugs are fixed and the gate is green at
+209/209 tests. The Medium bug is gone rather than merely out of reach, and the hardening gap is
+closed. The two deploy conditions below are unchanged — they are risks of the migration, not
+defects, and nothing in the fix round touched `MAX_ARTICLES_PER_RUN` or the deploy behaviour.
 
 Two conditions before deploying:
 1. Consciously accept RISK-1 and confirm the Bubble test environment is emptied in the same step.
