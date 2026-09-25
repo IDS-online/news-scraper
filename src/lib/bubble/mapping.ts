@@ -10,7 +10,7 @@
  * two are not transferred.
  */
 
-import { isUsableImageUrl } from '@/lib/image-url'
+import { isUsableImageUrl, normalizeImageUrl } from '@/lib/image-url'
 
 /** The Bubble side of one field pairing. */
 export const BUBBLE_FIELDS = {
@@ -80,7 +80,9 @@ export function toBubbleRecord(article: SyncableArticle): BubbleRecord {
   if (isUsableImageUrl(article.image_url)) {
     // Bubble keeps the same URL twice: once in the image field it renders from,
     // once as plain text for anything that needs the raw address.
-    const imageUrl = article.image_url.trim()
+    // normalizeImageUrl, not trim(): the send path must apply the exact rule
+    // isUsableImageUrl just approved the value under (NEWS-20 BUG-7).
+    const imageUrl = normalizeImageUrl(article.image_url)
     record[BUBBLE_FIELDS.image_url] = imageUrl
     record[BUBBLE_FIELDS.image_url_text] = imageUrl
   }
