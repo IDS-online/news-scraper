@@ -706,3 +706,73 @@ gate is green at 215/215, and no Critical or High defect exists. BUG-7 is a new 
 the same class in the same helper and does not block. The three deploy conditions are: commit and
 push the work and open a pull request, accept RISK-1 in writing, and check the row count for
 RISK-2.
+
+
+## BUG-7 Fix (round 5, 2026-09-25)
+
+Branch `fix/NEWS-20-c0-control-image-url`, on top of the merged PR #21 (`277c2d6`).
+
+### The defect
+
+`normalizeImageUrl()` removed tab/LF/CR and then called `trim()`. `trim()` removes
+Unicode *whitespace*, but the WHATWG URL parser strips every leading and trailing
+**C0 control** (U+0000-U+001F) and space -- and most C0 controls are not whitespace.
+So a value such as `\u0001javascript:alert(1)` made `SCHEME_PATTERN` miss, looked
+scheme-less, was accepted, and `new URL(src, baseUrl.origin)` in
+`html-engine.ts:226` normalised it straight back into the rejected scheme.
+
+Severity Low and **not an XSS**: the value only ever reaches an `img`/`srcset`
+attribute. The real impact is the one NEWS-20 exists to prevent -- Bubble's
+"Picture" field refusing the whole record.
+
+### The fix
+
+`src/lib/image-url.ts` -- `normalizeImageUrl()` now applies the URL spec's own two
+removals, in the spec's order:
+
+1. `URL_STRIPPED_ENDS` (`/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g`) strips the
+   leading/trailing C0 controls and spaces.
+2. `URL_STRIPPED_WHITESPACE` removes tab/LF/CR from anywhere (the BUG-6 rule).
+3. `URL_STRIPPED_ENDS` runs a second time, because step 2 can expose a control
+   character that was previously interior.
+4. A final `trim()` catches the Unicode whitespace the URL parser does *not* strip
+   (U+00A0, U+2028, ...). Rejecting slightly more than the parser does is the safe
+   direction: the worst case is an image we decline to use.
+
+`src/lib/bubble/mapping.ts:83` -- the send path now calls `normalizeImageUrl()`
+instead of `.trim()`, so the value sent to Bubble is exactly the value
+`isUsableImageUrl()` approved. This closes the "one shared rule" gap QA noted
+alongside BUG-7.
+
+`supabase/migrations/20260925140000_news20_clear_control_prefixed_image_urls.sql`
+-- re-runs the stored-`image_url` cleanup with `btrim(..., E' <C0 class>')` instead
+of the default space-only `btrim`, mirroring the corrected helper. Data-only and
+idempotent. Unlike `20260925090000` it does **not** touch `bubble_synced_at` or
+`bubble_id`, so it carries none of that migration's duplicate-record risk and is
+safe in any environment. U+0000 is deliberately absent from the character class:
+PostgreSQL text cannot hold a NUL byte.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `npm test` | **225/225 pass** (10 new, was 215) |
+| Regression proof | With `image-url.ts` reverted, **7 of the 10 new tests fail**; with the fix, all pass |
+| Boundary sweep | A loop over the full range U+0000-U+0020 asserts every prefix is rejected |
+| `npm run lint` | 0 errors (13 pre-existing warnings, unchanged) |
+| `npm run typecheck` | clean |
+| `npm run build` | PASS |
+| Migration replay | **Not run locally** -- Docker is not running on this machine, so `supabase db reset --local` could not execute. The CI `migrations` job replays it on the pull request. |
+
+### Explicitly out of scope
+
+QA's suggested durable fix -- deciding usability via `new URL(value, base).protocol`
+rather than the regex allowlist -- was **not** taken. It would require threading a
+base URL into `isUsableImageUrl()`, whose two callers
+(`mapping.ts`, which has no page URL) cannot both supply one. The normalisation fix
+above makes the regex agree with the parser on the entire C0 range, which closes
+the same class of defect without that refactor.
+
+RISK-1 (the `20260925090000` migration's only production safeguard is a header
+comment) and RISK-2 (`MAX_ARTICLES_PER_RUN = 1000` vs. a full re-sync) are
+**unchanged and still open** -- neither is touched by this branch.

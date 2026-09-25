@@ -220,3 +220,60 @@ describe('pickImageUrl — normalisation (NEWS-20 BUG-6)', () => {
     expect(pickImageUrl({ src: 'https://example.com/\na.jpg' })).toBe('https://example.com/a.jpg')
   })
 })
+
+describe('isUsableImageUrl — leading C0 controls (NEWS-20 BUG-7)', () => {
+  it('rejects a scheme hidden behind a leading C0 control', () => {
+    expect(isUsableImageUrl('\u0000javascript:alert(1)')).toBe(false)
+    expect(isUsableImageUrl('\u0001javascript:alert(1)')).toBe(false)
+    expect(isUsableImageUrl('\u001Fjavascript:alert(1)')).toBe(false)
+    expect(isUsableImageUrl('\u0000data:,')).toBe(false)
+  })
+
+  it('rejects the whole C0 range plus space, not just the whitespace subset', () => {
+    for (let code = 0; code <= 0x20; code += 1) {
+      const prefixed = String.fromCharCode(code) + 'data:,'
+      expect(isUsableImageUrl(prefixed), `U+${code.toString(16)}`).toBe(false)
+    }
+  })
+
+  it('matches what the URL parser sees — it strips those characters too', () => {
+    expect(new URL('\u0001javascript:alert(1)').protocol).toBe('javascript:')
+    expect(new URL('\u0000data:,').protocol).toBe('data:')
+  })
+
+  it('rejects a trailing control that would leave a rejected scheme behind', () => {
+    expect(isUsableImageUrl('data:,\u0000')).toBe(false)
+  })
+
+  it('rejects a value made only of C0 controls', () => {
+    expect(isUsableImageUrl('\u0000\u0001\u001F')).toBe(false)
+  })
+
+  it('still accepts an http(s) address wrapped in control characters', () => {
+    expect(isUsableImageUrl('\u0001https://example.com/a.jpg\u0000')).toBe(true)
+  })
+
+  it('rejects a scheme obfuscated by a control character and inner whitespace', () => {
+    expect(isUsableImageUrl('\u0001java\nscript:alert(1)')).toBe(false)
+  })
+})
+
+describe('pickImageUrl — control-character normalisation (NEWS-20 BUG-7)', () => {
+  it('falls through a control-prefixed placeholder to the real image', () => {
+    expect(
+      pickImageUrl({ src: '\u0000data:,', dataSrc: 'https://example.com/real.jpg' })
+    ).toBe('https://example.com/real.jpg')
+  })
+
+  it('stores the stripped form, so new URL() cannot resurrect the raw value', () => {
+    expect(pickImageUrl({ src: '\u0001https://example.com/a.jpg' })).toBe(
+      'https://example.com/a.jpg'
+    )
+  })
+
+  it('returns null when every candidate is a control-prefixed placeholder', () => {
+    expect(
+      pickImageUrl({ src: '\u0000data:,', dataSrc: '\u001Fjavascript:alert(1)' })
+    ).toBeNull()
+  })
+})

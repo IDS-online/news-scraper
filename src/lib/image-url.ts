@@ -22,16 +22,38 @@ const SCHEME_PATTERN = /^([a-z][a-z0-9+.-]*):/i
 const URL_STRIPPED_WHITESPACE = /[\t\n\r]/g
 
 /**
- * Bring a raw attribute value into the form the URL parser will actually see
- * (NEWS-20 BUG-6).
+ * Leading and trailing C0 controls (U+0000–U+001F) and spaces — the characters
+ * the WHATWG URL parser strips from the ends of a URL before parsing it.
  *
- * Without this, `java\nscript:alert(1)` slips past the scheme allowlist — the
- * embedded newline makes SCHEME_PATTERN miss, so the value looks scheme-less
- * and is accepted — and `new URL()` then normalises it back to
- * `javascript:alert(1)`, the exact value the allowlist exists to reject.
+ * `String.prototype.trim()` is not a substitute: it removes Unicode whitespace
+ * but leaves the non-whitespace C0 controls (NUL, SOH, … US) untouched.
+ */
+const URL_STRIPPED_ENDS = /^[\u0000-\u0020]+|[\u0000-\u0020]+$/g
+
+/**
+ * Bring a raw attribute value into the form the URL parser will actually see
+ * (NEWS-20 BUG-6, BUG-7).
+ *
+ * Two removals, in the order the URL spec applies them:
+ *
+ * 1. Strip leading/trailing C0 controls and spaces. Without this,
+ *    `\u0001javascript:alert(1)` slips past the scheme allowlist — the control
+ *    character makes SCHEME_PATTERN miss, so the value looks scheme-less — and
+ *    `new URL()` then normalises it back to `javascript:alert(1)` (BUG-7).
+ * 2. Remove tab, LF and CR from *anywhere* in the value, for the same reason:
+ *    `java\nscript:alert(1)` would otherwise be accepted and normalised back
+ *    into a rejected scheme (BUG-6).
+ *
+ * A final `trim()` handles the Unicode whitespace the URL parser does not strip
+ * (U+00A0, U+2028, …). Rejecting slightly more than the parser does is the safe
+ * direction: the worst case is an image we decline to use.
  */
 export function normalizeImageUrl(value: string): string {
-  return value.replace(URL_STRIPPED_WHITESPACE, '').trim()
+  return value
+    .replace(URL_STRIPPED_ENDS, '')
+    .replace(URL_STRIPPED_WHITESPACE, '')
+    .replace(URL_STRIPPED_ENDS, '')
+    .trim()
 }
 
 /**
@@ -45,8 +67,9 @@ export function normalizeImageUrl(value: string): string {
  * Scheme-less values (`/media/a.jpg`, `//cdn/a.jpg`, `a.jpg`) are accepted:
  * resolving them against the page URL is the caller's job.
  *
- * The value is normalised first (NEWS-20 BUG-6) so whitespace hidden inside the
- * scheme cannot smuggle a rejected scheme past the match.
+ * The value is normalised first (NEWS-20 BUG-6/BUG-7) so whitespace or control
+ * characters hidden in or before the scheme cannot smuggle a rejected scheme
+ * past the match.
  */
 export function isUsableImageUrl(value: string | null | undefined): value is string {
   if (!value) return false
