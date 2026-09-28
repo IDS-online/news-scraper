@@ -78,9 +78,14 @@ Two developers work on this repository in parallel. These rules are not optional
   whatever project is currently linked, including production.
 - **Everything in seeds and migrations must be schema-qualified** (`public.categories`,
   not `categories`) — both run against a connection with an empty `search_path`.
-- **Claim a feature ID by opening a GitHub Issue** titled `NEWS-<id>: <Feature name>`
-  before running `/requirements`. GitHub allocates the number; `features/INDEX.md` is
-  updated later, in the feature's own pull request.
+- **Claim a feature ID from `features/INDEX.md` ("Next Available ID"), then open a
+  GitHub Issue** titled `NEWS-<id>: <Feature name>` before running `/requirements`, so the
+  other developer sees the claim. **The issue number is not the feature ID.** GitHub numbers
+  issues and pull requests from one shared sequence, so pull requests consume numbers too:
+  by 2026-09-28 the NEWS-20 pull requests had already taken #21 and #22, which would have
+  forced the next two features to be NEWS-23/24 for no reason. `features/INDEX.md` is the
+  single source of truth for feature IDs; the issue is a visible claim, not the allocator.
+  Update `INDEX.md` in the feature's own pull request.
 - **New logic under `src/lib/` arrives with a test.** Run
   `npm run lint && npm run typecheck && npm run test && npm run build` before opening a
   pull request — CI runs exactly these.
