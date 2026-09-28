@@ -35,7 +35,7 @@
 | NEWS-18 | Visual Source Setup Wizard | Deployed | [NEWS-18-visual-source-wizard.md](NEWS-18-visual-source-wizard.md) | 2026-03-07 |
 | NEWS-19 | Bubble Sync (Articles into "News Scraped") | In Review | [NEWS-19-bubble-sync.md](NEWS-19-bubble-sync.md) | 2026-09-22 |
 | NEWS-20 | Bugfix: Lazy-loading placeholder (`data:,`) stored as image_url breaks Bubble sync | Deployed | [NEWS-20-bubble-image-placeholder-bugfix.md](NEWS-20-bubble-image-placeholder-bugfix.md) | 2026-09-25 |
-| NEWS-21 | Generic Image Fallback (og:image / twitter:image) in the Scraping Scheduler | Planned | [NEWS-21-generic-image-fallback.md](NEWS-21-generic-image-fallback.md) | 2026-09-28 |
+| NEWS-21 | Generic Image Fallback (og:image / twitter:image) in the Scraping Scheduler | In Review | [NEWS-21-generic-image-fallback.md](NEWS-21-generic-image-fallback.md) | 2026-09-28 |
 | NEWS-22 | Source Creation — Show How (or Whether) an Image Was Found | Planned | [NEWS-22-wizard-image-diagnostics.md](NEWS-22-wizard-image-diagnostics.md) | 2026-09-28 |
 
 <!-- Add features above this line -->

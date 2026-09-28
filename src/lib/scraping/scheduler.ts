@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { scrapeRssFeed, scrapeHtmlPage } from '@/lib/scraping'
+import { applyImageFallback } from '@/lib/scraping/og-image-fallback'
+import { createRunBudget, type RunBudget } from '@/lib/scraping/run-budget'
 import type { Source } from '@/types/source'
-import type { NormalizedArticle, ScrapeResult } from '@/types/article'
+import type { NormalizedArticle } from '@/types/article'
 
 // ---- Configuration ----
 
@@ -17,6 +19,14 @@ export interface SchedulerResult {
   articles_inserted: number
   errors: string[]
   skipped_reason?: string
+  /**
+   * NEWS-21: how many of the inserted articles got their picture from the
+   * og:image/twitter:image page fallback rather than from the RSS media field or
+   * `selector_image`. Purely diagnostic — it feeds NEWS-22's "how was the image
+   * found?" display and the per-source log line. `NormalizedArticle` and
+   * `ScrapeResult` deliberately gain no new field.
+   */
+  images_from_fallback?: number
 }
 
 // ---- Supabase Admin Client ----
@@ -46,8 +56,16 @@ function createAdminClient() {
  * and processes each one.
  *
  * Returns results for all processed sources.
+ *
+ * @param budget NEWS-21 image-fallback budget. Created here by default and
+ *   **once for the whole run**, before the source loop: the sources are processed
+ *   sequentially inside a single 60 s function invocation, so the allowance has
+ *   to span all of them. A per-source budget would permit 6 × 20 s inside that
+ *   window. Injectable so tests can hand in a pre-expired budget.
  */
-export async function runScheduledScrape(): Promise<SchedulerResult[]> {
+export async function runScheduledScrape(
+  budget: RunBudget = createRunBudget()
+): Promise<SchedulerResult[]> {
   const supabase = createAdminClient()
   const results: SchedulerResult[] = []
 
@@ -75,7 +93,7 @@ export async function runScheduledScrape(): Promise<SchedulerResult[]> {
 
   // Process each due source sequentially to avoid overloading
   for (const source of dueSources) {
-    const result = await scrapeSource(supabase, source as Source)
+    const result = await scrapeSource(supabase, source as Source, budget)
     results.push(result)
   }
 
@@ -85,8 +103,17 @@ export async function runScheduledScrape(): Promise<SchedulerResult[]> {
 /**
  * Manually trigger a scrape for a specific source.
  * Used by the admin manual trigger endpoint.
+ *
+ * @param budget NEWS-21 image-fallback budget, created per invocation — a manual
+ *   trigger IS the whole run here. This path needs the budget at least as badly
+ *   as the cron one: its route also declares `maxDuration = 60`, and triggering a
+ *   scrape by hand is the normal way to test a source that was just added, which
+ *   is exactly the case with the most image-less articles.
  */
-export async function scrapeSourceById(sourceId: string): Promise<SchedulerResult> {
+export async function scrapeSourceById(
+  sourceId: string,
+  budget: RunBudget = createRunBudget()
+): Promise<SchedulerResult> {
   const supabase = createAdminClient()
 
   // Load the source
@@ -117,7 +144,7 @@ export async function scrapeSourceById(sourceId: string): Promise<SchedulerResul
     }
   }
 
-  return scrapeSource(supabase, source as Source)
+  return scrapeSource(supabase, source as Source, budget)
 }
 
 // ---- Internal ----
@@ -139,11 +166,13 @@ export function isSourceDue(source: { last_scraped_at: string | null; interval_m
 }
 
 /**
- * Scrape a single source: acquire lock, run engine, deduplicate, insert, release lock.
+ * Scrape a single source: acquire lock, run engine, deduplicate, fill missing
+ * images, insert, release lock.
  */
 async function scrapeSource(
   supabase: ReturnType<typeof createAdminClient>,
-  source: Source
+  source: Source,
+  budget: RunBudget
 ): Promise<SchedulerResult> {
   const result: SchedulerResult = {
     source_id: source.id,
@@ -192,6 +221,21 @@ async function scrapeSource(
       return result
     }
 
+    // 3.5 NEWS-21: last-resort image lookup for the articles about to be
+    // inserted. Deliberately here and nowhere else:
+    //  - AFTER deduplication, so articles that have been stored for weeks never
+    //    trigger a page fetch again (inside an engine this cost ~1 900
+    //    requests/day for data already in the database);
+    //  - BEFORE the insert, so the image lands in the same row rather than
+    //    needing an UPDATE and a Bubble re-sync;
+    //  - outside the per-source JOB_TIMEOUT_MS, so it cannot abort the scrape;
+    //  - bounded by the run-wide budget, so it cannot get the function killed
+    //    while the source's lock is held.
+    // A failed lookup is not an error: the article is inserted with
+    // `image_url: null`, exactly as today.
+    const fallback = await applyImageFallback(newArticles, budget)
+    result.images_from_fallback = fallback.filled
+
     // 4. Insert new articles in batches
     const inserted = await insertArticles(supabase, newArticles, result)
     result.articles_inserted = inserted
@@ -200,7 +244,13 @@ async function scrapeSource(
     await updateSourceStatus(supabase, source.id, resolveScrapeStatus(result))
 
     console.log(
-      `[Scheduler] ${source.name}: ${result.articles_found} found, ${result.articles_inserted} inserted`
+      `[Scheduler] ${source.name}: ${result.articles_found} found, ${result.articles_inserted} inserted` +
+        (fallback.candidates > 0
+          ? `, ${fallback.filled}/${fallback.candidates} Bilder per Seiten-Fallback` +
+            (fallback.skipped_no_budget > 0
+              ? ` (${fallback.skipped_no_budget} ohne Bild — Zeitbudget aufgebraucht)`
+              : '')
+          : '')
     )
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
