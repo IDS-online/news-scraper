@@ -2,8 +2,9 @@
 
 ## Status: Planned
 **Created:** 2026-09-28
-**Last Updated:** 2026-09-28 (review round 3: Bubble re-sync + env guard, budget at every
-entry point, redirect/base-URL wording, HTML fixture, dedup defect noted)
+**Last Updated:** 2026-09-28 (review round 4: budget-clipped articles are recovered only by
+the backfill script, budget wording covers both entry points; round 3: Bubble re-sync + env
+guard, budget at every entry point, redirect/base-URL wording, HTML fixture, dedup defect noted)
 
 ## Dependencies
 - Builds on NEWS-20 (`src/lib/image-url.ts` — `isUsableImageUrl()`, `pickImageUrl()`, `normalizeImageUrl()`). Reused, not replaced.
@@ -116,9 +117,10 @@ Checked: `maxDuration = 60` (`src/app/api/cron/scrape/route.ts:5`) covers the **
 budget of ~35s blows the window at two affected sources (70s) and reaches 200s+ at six — the
 function would be killed mid-run. The limit is therefore a **run-wide time budget**: past a
 fixed elapsed-time mark, no further fallback fetches are started and the remaining articles
-are simply inserted without an image (they get one on a later run, or via the backfill script).
-Correction 2a makes this a backstop rather than a routine constraint, but it must exist so the
-cron run cannot die of image fetching.
+are simply inserted without an image. Once inserted they are excluded by dedup on every later
+run, so the fallback never revisits them — the backfill script is the only path that fills them
+afterwards (review round 4). Correction 2a makes this a backstop rather than a routine
+constraint, but it must exist so the cron run cannot die of image fetching.
 
 **3. Split into two tickets (NEWS-21 + NEWS-22).** The scraping-engine fallback and the source
 wizard's create-time preview are testable and deployable independently, and they touch different
@@ -209,7 +211,10 @@ were on the table:
       articles with `image_url IS NULL`, refetches each article's own page (not the source feed),
       runs the same fallback chain, and updates `image_url` where a usable value was found.
       Dry-run mode by default (prints what would change); a `--apply` flag performs the update.
-      Existing articles with a non-null `image_url` are never touched.
+      Existing articles with a non-null `image_url` are never touched. The script is re-runnable
+      and is the **standing recovery path** whenever the run-wide budget left newly inserted
+      articles imageless (review round 4) — not only a one-off post-deploy step, because an
+      article inserted without an image is never revisited by the scheduler's fallback.
 - [ ] Running the backfill script against the current ~50 affected + any other pre-existing
       null-image articles is documented as a manual post-deploy step (not itself part of the
       cron pipeline).
@@ -250,8 +255,9 @@ were on the table:
 - **Many image-less articles in one run**: fallback fetches are limited by a small concurrency
   (e.g. 3 in flight) and, decisively, by the **run-wide time budget** — not by a per-source
   count. A newly added source whose first run brings 100 image-less articles therefore fetches
-  what fits in the budget and leaves the rest at `image_url: null`; the backfill script (or a
-  later run, once those articles are no longer new) can close the gap. This ordering matters:
+  what fits in the budget and leaves the rest at `image_url: null`; **only the backfill script
+  can close that gap afterwards** (review round 4) — once inserted, those articles are excluded
+  by dedup on every later run, so the fallback never revisits them. This ordering matters:
   a per-source count cap would still allow 6 sources × 20 fetches to overrun the 60s function
   limit.
 - **Backlog after a deploy or an outage**: the first run after this ships may see an unusually
@@ -261,7 +267,7 @@ were on the table:
   bare path): resolved against **the article page's own full URL**, then run through
   `isUsableImageUrl()` — a bad value is discarded, not stored. Note the wording correction
   (review 3E): this is deliberately *not* "the same way `html-engine.ts` does it".
-  `html-engine.ts:226` resolves against `baseUrl.origin`, which drops the path and therefore
+  `html-engine.ts:224` resolves against `baseUrl.origin`, which drops the path and therefore
   resolves a path-relative value wrongly; for a meta tag read off a specific article page the
   full article URL is the correct base.
 - **`og:image` points at a tracking pixel / 1×1 placeholder**: out of scope. `isUsableImageUrl()`
@@ -301,7 +307,9 @@ were on the table:
 - Vercel function limits (checked, not deferred): `maxDuration = 60`
   (`src/app/api/cron/scrape/route.ts:5`) applies to the entire run, and `scheduler.ts:77`
   processes all due sources sequentially in one invocation. The fallback budget must therefore
-  be **run-wide elapsed time**, measured from the start of `runScheduledScrape()` — suggested
+  be **run-wide elapsed time**, measured from the start of the entry point —
+  `runScheduledScrape()` or `scrapeSourceById()`, see the budget acceptance criteria (review
+  round 4: naming only the cron entry point here contradicted criterion 3D) — suggested
   ~20s, leaving the remaining ~40s for the scrapes and database work that the run cannot skip.
   A per-source budget is explicitly rejected: at 6 sources it would permit 200s+ inside a 60s
   window.

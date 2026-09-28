@@ -2,8 +2,9 @@
 
 ## Status: Planned
 **Created:** 2026-09-28
-**Last Updated:** 2026-09-28 (review round 3: RSS preview is in scope, form dialog as well
-as wizard, maxDuration on the preview route)
+**Last Updated:** 2026-09-28 (review round 4: RSS preview and form dialog made testable as
+acceptance criteria, API-shape wording updated; round 3: RSS preview is in scope, form dialog
+as well as wizard, maxDuration on the preview route)
 
 ## Dependencies
 - Requires NEWS-21 (Generic Image Fallback) — this ticket surfaces that fallback's outcome; it
@@ -43,9 +44,17 @@ one more signal to that preview: did we get an image, and where did it come from
   without images.
 
 ## Acceptance Criteria
-- [ ] The source wizard's preview step (existing NEWS-17/18 preview UI) shows, per previewed
+- [ ] Every creation-time preview — the wizard's preview step (NEWS-17/18) **and** the preview
+      in `source-form-dialog.tsx`, for HTML **and** RSS sources alike — shows, per previewed
       article, one of three states: image found via source selector/RSS field, image found via
-      page fallback (og:image/twitter:image), or no image found.
+      page fallback (og:image/twitter:image), or no image found. (Review round 4: the criteria
+      previously covered only the wizard, leaving the scope correction above untestable.)
+- [ ] **The RSS preview exists.** Creating an RSS source shows a minimal article preview (first
+      N feed items with title, link and the image state above) where today there is none. Without
+      this criterion QA could pass with the diagnostic still blind for RSS sources — the very
+      source type that caused NEWS-21.
+- [ ] The new RSS preview implements loading, error and empty states per the frontend rules;
+      the existing HTML preview keeps the states it already has.
 - [ ] The three states are visually distinct (e.g. badge/label), not just present in a tooltip —
       the goal is that a missing/fallback-only image is noticeable at a glance across the preview
       list, not something the operator has to hunt for.
@@ -63,8 +72,9 @@ one more signal to that preview: did we get an image, and where did it come from
 ## Edge Cases
 - **Fallback fetch is still in flight when the operator views the preview**: the preview step
   already waits for the scrape-preview call to resolve before rendering (per NEWS-17); the image
-  state is part of that same response, not a separate async load — no new loading state needed
-  beyond what NEWS-17 already has.
+  state is part of that same response, not a separate async load — the existing HTML preview
+  needs no new loading state. The new RSS preview brings its own loading/error/empty states
+  (see acceptance criteria).
 - **All previewed articles have images via selector/RSS field (the common case)**: no summary
   note shown — the callout in AC3 only appears when there's something to flag, so a healthy
   source's preview looks exactly as clean as it does today.
@@ -82,9 +92,12 @@ one more signal to that preview: did we get an image, and where did it come from
 - The preview reuses NEWS-21's shared fallback helper directly. It must **not** be "fixed" by
   moving the fallback back into the engines — that is exactly the defect review correction 2a of
   NEWS-21 removed (≈1,900 requests/day), and reintroducing it here would reintroduce it globally.
-- No new API route: extend the existing preview response (`scrapeHtmlPreview`/RSS preview
-  equivalent) with an `image_source: 'selector' | 'fallback' | 'none'` field per article, backed
-  by NEWS-21's fallback helper.
+- API shape — decided in `/architecture` (review round 4: the earlier "no new API route" wording
+  predated the scope correction and assumed an RSS preview equivalent that does not exist):
+  either extend `POST /api/sources/preview` with a `type` discriminator (its Zod schema currently
+  hard-requires the HTML selectors, so it would become a discriminated union) or add a sibling
+  RSS preview route. Either way, the per-article preview response carries an
+  `image_source: 'selector' | 'fallback' | 'none'` field, backed by NEWS-21's fallback helper.
 - **The preview path does not go through the scheduler.** NEWS-21 hooks the fallback into
   `scrapeSource()` (post-deduplication), which `scrapeHtmlPreview()` never calls — so the
   preview must invoke NEWS-21's shared helper *directly* for its sample articles. This is the
