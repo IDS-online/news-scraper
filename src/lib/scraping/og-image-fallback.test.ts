@@ -295,6 +295,33 @@ describe('fetchFallbackImageUrl', () => {
     )
   })
 
+  it('resolves a relative og:image against the POST-redirect URL (review B-1)', async () => {
+    // Native fetch follows the redirect itself and hands back the final
+    // address in response.url. A 301 from /artikel to /artikel/ moves the
+    // document one directory DOWN — resolved against the pre-redirect URL,
+    // "bild.jpg" would wrongly land in /news/ instead of /news/artikel/.
+    const redirectedTo = 'https://example.com/news/artikel/'
+    stubFetch(async () => {
+      const response = htmlResponse(page('<meta property="og:image" content="bild.jpg">'))
+      Object.defineProperty(response, 'url', { value: redirectedTo })
+      return response
+    })
+
+    await expect(fetchFallbackImageUrl('https://example.com/news/artikel')).resolves.toBe(
+      'https://example.com/news/artikel/bild.jpg'
+    )
+  })
+
+  it('falls back to the request URL when response.url is empty or unparsable', async () => {
+    // `new Response()` reports url as '' — exactly the synthetic case; the
+    // request URL must then stay the resolution base.
+    stubFetch(async () => htmlResponse(page('<meta property="og:image" content="bild.jpg">')))
+
+    await expect(fetchFallbackImageUrl(ARTICLE_URL)).resolves.toBe(
+      'https://example.com/news/2026/bild.jpg'
+    )
+  })
+
   it('returns null — never throws — for a body that is not HTML at all', async () => {
     stubFetch(async () => new Response('binary', { headers: { 'content-type': 'text/html' } }))
     await expect(fetchFallbackImageUrl(ARTICLE_URL)).resolves.toBeNull()

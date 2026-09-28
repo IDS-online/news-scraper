@@ -349,6 +349,32 @@ export function assertResyncTargetIsTestBubble(env: NodeJS.ProcessEnv = process.
 }
 
 /**
+ * Refuse a resync when the journal was written against a DIFFERENT Supabase
+ * project than the one the current environment points at (review B-4).
+ *
+ * The journal scopes the resync to "exactly the rows this run filled" — but
+ * row ids only mean anything inside the project they came from. Run against
+ * another project (or with a missing URL), the id lookup would silently match
+ * nothing or, worse, foreign rows. Same error class as the Bubble guard:
+ * hard abort, no override flag.
+ */
+export function assertJournalMatchesSupabaseTarget(
+  journal: BackfillJournal,
+  env: NodeJS.ProcessEnv = process.env
+): void {
+  const current = env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+
+  if (!current || journal.supabase_url !== current) {
+    throw new Error(
+      '--resync abgebrochen: das Journal stammt aus einem anderen Supabase-Projekt. ' +
+        `Journal: ${journal.supabase_url} — aktuelle NEXT_PUBLIC_SUPABASE_URL: ${current ?? '(nicht gesetzt)'}. ` +
+        'Die Artikel-Ids eines Journals sind nur in dem Projekt gueltig, in dem gefuellt wurde; ' +
+        'gegen ein anderes Projekt wuerden die Stempel der falschen Zeilen zurueckgesetzt.'
+    )
+  }
+}
+
+/**
  * The journal rows that actually need a resync: those whose article still
  * carries a Bubble sync stamp *right now*.
  *
@@ -428,6 +454,90 @@ export async function applyResync(
   }
 
   return report
+}
+
+// ---- CLI arguments ----
+
+/**
+ * Parsed CLI options. Lives in the core (rather than the script) so the
+ * mode/flag consistency rules below are unit-testable — the wrapper only
+ * prints and delegates.
+ */
+export interface BackfillCliArgs {
+  help: boolean
+  apply: boolean
+  resync: boolean
+  list: boolean
+  journal: string | null
+  limit: number | null
+}
+
+/**
+ * Parse and validate the CLI arguments.
+ *
+ * A flag that would be silently ineffective in the requested mode is a
+ * rejected input, not a shrug (QA finding): `--journal` and `--list` belong
+ * to `--resync`, `--limit` belongs to the fill phase. An operator who typed
+ * `--limit` with `--resync` believed it would cap something — aborting with a
+ * clear message beats quietly resetting more stamps than they expected.
+ *
+ * `--help` wins over everything and skips validation: asking for help must
+ * never error.
+ */
+export function parseBackfillCliArgs(argv: string[]): BackfillCliArgs {
+  const valueOf = (name: string): string | null => {
+    const prefix = `--${name}=`
+    const arg = argv.find((candidate) => candidate.startsWith(prefix))
+    return arg ? arg.slice(prefix.length) : null
+  }
+
+  const args: BackfillCliArgs = {
+    help: argv.includes('--help'),
+    apply: argv.includes('--apply'),
+    resync: argv.includes('--resync'),
+    list: argv.includes('--list'),
+    journal: valueOf('journal'),
+    limit: null,
+  }
+
+  if (args.help) return args
+
+  const unknown = argv.filter(
+    (arg) =>
+      arg.startsWith('--') &&
+      !['--apply', '--resync', '--list', '--help'].includes(arg) &&
+      !arg.startsWith('--journal=') &&
+      !arg.startsWith('--limit=')
+  )
+  if (unknown.length > 0) {
+    throw new Error(`Unbekannte Option(en): ${unknown.join(', ')} — Hilfe mit --help`)
+  }
+
+  const rawLimit = valueOf('limit')
+  if (rawLimit !== null) {
+    if (!/^\d+$/.test(rawLimit) || Number(rawLimit) === 0) {
+      throw new Error(`--limit muss eine positive Zahl sein, nicht: ${rawLimit}`)
+    }
+    args.limit = Number(rawLimit)
+  }
+
+  if (!args.resync) {
+    if (args.list) {
+      throw new Error('--list gehoert zu --resync und hat ohne diese Option keine Bedeutung.')
+    }
+    if (args.journal !== null) {
+      throw new Error(
+        '--journal gehoert zu --resync: die Fill-Phase SCHREIBT das Journal, sie liest keins.'
+      )
+    }
+  } else if (args.limit !== null) {
+    throw new Error(
+      '--limit gehoert zur Fill-Phase und ist mit --resync wirkungslos — der Resync-Umfang ' +
+        'ist immer exakt das Journal.'
+    )
+  }
+
+  return args
 }
 
 /**

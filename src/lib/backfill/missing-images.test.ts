@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   applyResync,
+  assertJournalMatchesSupabaseTarget,
   assertResyncTargetIsTestBubble,
   buildJournal,
   loadNullImageArticles,
   loadResyncTargets,
+  parseBackfillCliArgs,
   readJournalFile,
   runFill,
   writeJournalFile,
@@ -146,6 +148,7 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co'
   process.env.BUBBLE_API_BASE_URL = 'https://example.bubbleapps.io'
   process.env.BUBBLE_API_TOKEN = 'token'
   process.env.BUBBLE_DATA_TYPE = 'newsscraped'
@@ -299,6 +302,76 @@ describe('assertResyncTargetIsTestBubble', () => {
     // message keeps anyone from quietly adding a bypass switch later.
     process.env.BUBBLE_USE_TEST_VERSION = 'false'
     expect(() => assertResyncTargetIsTestBubble()).toThrow(/keinen Schalter/)
+  })
+})
+
+describe('assertJournalMatchesSupabaseTarget (review B-4)', () => {
+  it('passes when the journal was written against the current Supabase project', () => {
+    expect(() => assertJournalMatchesSupabaseTarget(journalOf([]))).not.toThrow()
+  })
+
+  it('aborts when the journal stems from a DIFFERENT Supabase project', () => {
+    const foreign = { ...journalOf([]), supabase_url: 'https://anderes-projekt.supabase.co' }
+    expect(() => assertJournalMatchesSupabaseTarget(foreign)).toThrow(
+      /anderen Supabase-Projekt/
+    )
+  })
+
+  it('aborts when the current environment has no Supabase URL at all', () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL
+    expect(() => assertJournalMatchesSupabaseTarget(journalOf([]))).toThrow(
+      /anderen Supabase-Projekt/
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CLI arguments (QA findings: --help, mode/flag consistency)
+// ---------------------------------------------------------------------------
+
+describe('parseBackfillCliArgs', () => {
+  it('parses the documented fill and resync invocations', () => {
+    expect(parseBackfillCliArgs([])).toMatchObject({ help: false, apply: false, resync: false })
+    expect(parseBackfillCliArgs(['--apply', '--limit=10'])).toMatchObject({ apply: true, limit: 10 })
+    expect(parseBackfillCliArgs(['--resync', '--list'])).toMatchObject({ resync: true, list: true })
+    expect(
+      parseBackfillCliArgs(['--resync', '--apply', '--journal=scripts/j.json'])
+    ).toMatchObject({ resync: true, apply: true, journal: 'scripts/j.json' })
+  })
+
+  it('--help wins over everything and never errors', () => {
+    expect(parseBackfillCliArgs(['--help']).help).toBe(true)
+    // Even combined with otherwise-invalid input: asking for help must succeed.
+    expect(parseBackfillCliArgs(['--help', '--unbekannt', '--limit=0']).help).toBe(true)
+  })
+
+  it('rejects unknown options', () => {
+    expect(() => parseBackfillCliArgs(['--unbekannt'])).toThrow(/Unbekannte Option/)
+  })
+
+  it('rejects a non-positive or non-numeric --limit', () => {
+    expect(() => parseBackfillCliArgs(['--limit=0'])).toThrow(/positive Zahl/)
+    expect(() => parseBackfillCliArgs(['--limit=abc'])).toThrow(/positive Zahl/)
+  })
+
+  it('rejects --list without --resync', () => {
+    expect(() => parseBackfillCliArgs(['--list'])).toThrow(/--list gehoert zu --resync/)
+  })
+
+  it('rejects --journal in fill mode instead of silently ignoring it', () => {
+    // QA finding: the fill phase WRITES a journal — an operator passing one in
+    // believed it would be read, and must be told it will not be.
+    expect(() => parseBackfillCliArgs(['--apply', '--journal=scripts/j.json'])).toThrow(
+      /--journal gehoert zu --resync/
+    )
+  })
+
+  it('rejects --limit in resync mode instead of silently ignoring it', () => {
+    // QA finding: the resync scope is always exactly the journal — a --limit
+    // suggests a cap that does not exist.
+    expect(() => parseBackfillCliArgs(['--resync', '--list', '--limit=5'])).toThrow(
+      /--limit gehoert zur Fill-Phase/
+    )
   })
 })
 

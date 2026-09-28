@@ -118,8 +118,15 @@ export async function fetchFallbackImageUrl(articleUrl: string): Promise<string 
   }
 
   let html: string
+  let baseUrl = pageUrl
   try {
-    html = await fetchPage(pageUrl)
+    const fetched = await fetchPage(pageUrl)
+    html = fetched.html
+    // Review B-1: native fetch follows redirects, so the document may live at
+    // a different address than the one requested. Relative meta values must
+    // resolve against the FINAL URL — a 301 from /artikel to /artikel/ would
+    // otherwise shift a path-relative og:image into the parent directory.
+    baseUrl = fetched.finalUrl
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     console.warn(`[ImageFallback] Seite nicht abrufbar (${articleUrl}): ${message}`)
@@ -127,7 +134,7 @@ export async function fetchFallbackImageUrl(articleUrl: string): Promise<string 
   }
 
   try {
-    return extractMetaImageUrl(html, pageUrl)
+    return extractMetaImageUrl(html, baseUrl)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     console.warn(`[ImageFallback] Seite nicht auswertbar (${articleUrl}): ${message}`)
@@ -297,9 +304,14 @@ export async function applyImageFallback(
  * timeout, content-length early abort, streamed-read cap, shared charset
  * detection, same User-Agent.
  *
+ * Returns the decoded HTML together with the FINAL URL the document was served
+ * from (`response.url` after fetch's automatic redirects; the request URL when
+ * that is missing or unparsable) — the only correct base for relative meta
+ * values (review B-1).
+ *
  * Throws on any failure — the single caller turns that into a null result.
  */
-async function fetchPage(pageUrl: URL): Promise<string> {
+async function fetchPage(pageUrl: URL): Promise<{ html: string; finalUrl: URL }> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FALLBACK_FETCH_TIMEOUT_MS)
 
@@ -326,13 +338,25 @@ async function fetchPage(pageUrl: URL): Promise<string> {
       )
     }
 
+    // The address the document was actually served from. `response.url` is
+    // empty on some mocked/synthetic responses and not guaranteed parsable;
+    // in both cases the request URL stays the base.
+    let finalUrl = pageUrl
+    if (response.url) {
+      try {
+        finalUrl = new URL(response.url)
+      } catch {
+        // keep the request URL
+      }
+    }
+
     const rawBytes = await readCapped(response)
 
     const decoder = new TextDecoder(detectCharset(response.headers.get('content-type') ?? '', rawBytes), {
       fatal: false,
       ignoreBOM: false,
     })
-    return decoder.decode(rawBytes)
+    return { html: decoder.decode(rawBytes), finalUrl }
   } finally {
     clearTimeout(timeoutId)
   }

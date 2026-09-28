@@ -1,6 +1,6 @@
 # NEWS-21: Generic Image Fallback (og:image / twitter:image) in the Scraping Scheduler
 
-## Status: In Progress
+## Status: In Review
 **Created:** 2026-09-28
 **Last Updated:** 2026-09-28 (review round 4: budget-clipped articles are recovered only by
 the backfill script, budget wording covers both entry points; round 3: Bubble re-sync + env
@@ -386,7 +386,11 @@ the documented follow-up ticket).
 2. *Batch orchestration* — takes the list of new articles, the run budget, and returns
    how many images it filled (mutating/returning the articles' `image_url`). Behavior:
    - Selects only articles with `image_url` null; articles with an image are never
-     touched and cause zero requests.
+     touched and cause zero requests. Implementation note: the scheduler-side candidate
+     check is `!isUsableImageUrl(image_url)` — deliberately wider than a literal null
+     check, so a stored placeholder value such as `data:,` counts as image-less and is
+     replaced. The backfill core, per the spec's acceptance criteria, selects
+     `image_url IS NULL` only — a known, intentional asymmetry.
    - Checks the budget **before starting every fetch, including the very first** — this
      is the acceptance criterion protecting the un-`finally`-able `releaseLock()` path.
      Once the budget is exhausted, remaining articles are left at null silently.
@@ -531,7 +535,63 @@ separate ticket) · any Bubble PATCH/update path (separate ticket; until then `-
 is test-database-only by hard guard).
 
 ## QA Test Results
-_To be added by /qa_
+
+**QA date:** 2026-09-28 · **Branch:** `feat/NEWS-21-image-fallback` @ `e42d159` · **Verdict: PASS** —
+all acceptance criteria fulfilled or properly documented as manual; no blocking defects found.
+
+### Automated gates (run by QA, not taken from claims)
+
+| Gate | Result |
+|---|---|
+| `npm run test` | **305 tests in 15 files, all passing** (exit 0). NEWS-21 adds: `og-image-fallback.test.ts` 42 tests, `missing-images.test.ts` 18, `run-budget.test.ts` 7, plus the integration additions in `scheduler.test.ts` (26 total in that file). |
+| `npm run lint` | 0 errors, 12 warnings — all pre-existing. The only warning in a touched file (`MAX_REDIRECTS` unused, `html-engine.ts:11`) predates this branch and is the constant the spec explicitly documents as declared-but-unenforced. |
+| `npm run typecheck` | Clean (exit 0). |
+| CLI smoke test (no DB, no network — env blanked so `.env.local` could not be picked up) | Unknown flag (`--help`) → hard abort, exit 1. `--limit=abc` / `--limit=0` → abort. `--list` without `--resync` → abort. `--resync` with Bubble unconfigured → guard abort before any DB/network access. `--resync --apply` with a LIVE Bubble target (`BUBBLE_USE_TEST_VERSION=false`) → guard abort naming the live target, exit 1. Fill dry-run without Supabase env → abort on missing env vars. Six-step procedure printed on every run. |
+
+### Acceptance criteria (17 checkboxes in the spec, in order)
+
+| # | Criterion (short) | Status | Evidence |
+|---|---|---|---|
+| 1 | Shared helper, og:image → twitter:image, reuses `image-url.ts` validation | Pass | `src/lib/scraping/og-image-fallback.ts` (`extractMetaImageUrl`, `fetchFallbackImageUrl`); tests: "tag precedence" + "validation via image-url.ts" blocks in `og-image-fallback.test.ts` (incl. `data:,`, `javascript:`, control-char smuggling per NEWS-20 BUG-7) |
+| 2 | Invoked once in `scrapeSource()` between dedup and insert, article's own URL, engines unchanged | Pass | `scheduler.ts` step 3.5 (`applyImageFallback(newArticles, budget)`); test "fills the dental-tribune article, fetching its own page — not the feed URL". Engines: `rss-engine.ts` untouched; `html-engine.ts` only exports the existing `detectCharset` for reuse — no fetch added, no behavior change |
+| 3 | Zero fallback fetches for dedup-filtered articles (~1 900/day regression guard) | Pass | `scheduler.test.ts` "performs ZERO fallback fetches when deduplication filters every article out" (global fetch mock, zero calls asserted) |
+| 4 | Purely last resort: zero extra requests when primary path delivered an image | Pass | `scheduler.test.ts` "performs ZERO extra requests when the primary path already delivered the image"; unit test "performs ZERO fetches when every article already has an image" |
+| 5 | Run-wide budget: past the mark no further fetches; rest inserted with null, no error | Pass | `scheduler.test.ts` "stops fetching when the budget runs out mid-run: rest stays null, no error, nothing dropped"; also "shares ONE budget across all sources of the run" (run-wide, not per source) |
+| 6 | Budget created at both entry points (`runScheduledScrape` **and** `scrapeSourceById`) | Pass | Both functions take `budget: RunBudget = createRunBudget()` created at entry (`scheduler.ts`); tests with pre-exhausted budget for the cron path **and** "scrapeSourceById — image fallback (manual entry point)" |
+| 7 | Budget enforced **before the first fetch** (lock-loss protection) | Pass | `og-image-fallback.ts` checks `budget.hasTimeLeft()` before every fetch incl. the first; unit test "starts ZERO fetches when the budget is already spent — not 'one, then stop'"; `run-budget.test.ts` covers the deadline math (exhausted exactly at the mark, zero allowance) |
+| 8 | mgb-dental / dental-tribune fixtures produce a usable `image_url` | Pass | `image-fallback-fixtures.ts` (recorded from the live sites 2026-09-28, trimmed not invented); engine-level tests prove the feeds alone yield `image_url: null`; scheduler tests prove the inserted rows carry the real `og:image` values |
+| 9 | HTML-path fixture without `selector_image` gains an image via fallback | Pass | `scheduler.test.ts` "runScheduledScrape — HTML source end to end": one fetch for the listing, one for the article, inserted row carries the path-relative `og:image` resolved against the full article URL |
+| 10 | No-meta source (dentalmarketing-magazin style) completes with `image_url: null`, no error | Pass | `scheduler.test.ts` "completes a source whose pages have no meta image": `errors` empty, row inserted with null, `last_error`/`last_scrape_warning` stay null |
+| 11 | Result plumbing: fallback count only, no new field on `NormalizedArticle` | Pass | `SchedulerResult.images_from_fallback` (optional, `scheduler.ts`); asserted across the integration tests; `NormalizedArticle`/`ScrapeResult` unchanged |
+| 12 | Backfill script: dry-run default, `--apply`, only-null selection, idempotent, standing recovery path | Pass | `src/lib/backfill/missing-images.ts` (UPDATE re-checks `image_url IS NULL` in its own WHERE) + `scripts/backfill-missing-images.ts`; tests: dry run writes nothing, apply updates only usable finds, non-null rows never selected, second run skips filled rows, no regression of a concurrently filled row |
+| 13 | Post-deploy run against ~50 affected articles documented as manual step | Documented (manual) | Spec (this file) + CLI prints the procedure on every run; execution is deliberately left to the `/deploy` phase — not automated, per spec |
+| 14 | `--resync` clears `bubble_synced_at`/`bubble_id` for exactly the filled rows | Pass | Journal written per `--apply` scopes the resync (`buildJournal`/`loadResyncTargets`); stamps re-read from the DB, not trusted from the journal; `applyResync` matches the stamp in the WHERE clause; tests in `missing-images.test.ts` |
+| 15 | Hard environment guard on `--resync`, no override flag | Pass | `assertResyncTargetIsTestBubble()` runs before any row is read; 6 dedicated tests (unset / "false" / other values / unconfigured / no-override message); **verified live in the CLI smoke test**: LIVE target → hard abort, exit 1 |
+| 16 | List-before-reset six-step procedure documented and printed | Pass | Documented in this spec; `RESYNC_PROCEDURE` printed by the CLI on every invocation (verified in smoke test output) |
+| 17 | Documented assumption: delete-and-recreate valid only for the Bubble dev DB; PATCH path is a follow-up ticket | Documented | Spec + module comment on the guard + the guard's own error message name the PATCH follow-up ticket explicitly |
+
+### Findings (none blocking)
+
+1. **[Low, UX] `--help` is treated as an unknown option** (`scripts/backfill-missing-images.ts:100-109`): the script aborts with "Unbekannte Option(en): --help" instead of printing usage. Usage is available in the file header and the banner printed on every valid run, so this is cosmetic — but a `--help` handler would be friendlier.
+2. **[Low, cosmetic] Silently ignored flag combinations**: `--journal=` in fill mode and `--limit=` in resync mode are accepted and ignored rather than rejected. No incorrect behavior results.
+3. **[Info] Fallback fetches URLs originating from third-party feed content.** Unlike the engines (which fetch the admin-configured source URL), the fallback fetches article URLs supplied by the feed itself. Mitigations present: http(s)-only scheme check before fetch, GET only, 5 s timeout, 5 MB cap, response only parsed for meta tags, extracted value re-validated through `isUsableImageUrl()`. Same trust class as scraping in general; no action required for this ticket.
+4. **[Pre-existing, tracked in spec] Dedup case-sensitivity defect** (`scheduler.ts` `.in('url', ...)` vs. `lower(url)` index) is unchanged, as the spec mandates — measured impact for this ticket is nil (both affected sources use all-lowercase URLs).
+
+### Security audit (per `.claude/rules/security.md`)
+
+- **No secrets in the diff**: full-diff grep for key/token/bearer literals found only a dummy `'service-key'` inside a test. Fixtures contain only public URLs.
+- **No new environment variables**: the script reads only pre-existing vars (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BUBBLE_*` from NEWS-19). `.env.local.example` correctly unchanged.
+- **Input validation on the new surface (CLI flags)**: unknown flags rejected, `--limit` validated as positive integer, `--list` without `--resync` rejected — all verified by smoke test with exit code 1.
+- **`--resync` guard**: hard abort unless `BUBBLE_USE_TEST_VERSION === 'true'` **and** the parsed config agrees; fires before any DB read; no override flag exists; verified by unit tests and live smoke test against a fake LIVE config.
+- **Journal files** (`scripts/.image-backfill-journal-*.json`) are gitignored.
+- **RLS posture unchanged**: the backfill uses the service-role client because RLS grants admins no UPDATE on `articles` — consistent with the existing model; no policy touched.
+
+### Deliberately NOT tested, and why
+
+- **No live backfill run** against Supabase and no live HTTP fetches against the source sites — QA mandate excludes touching the real database and third-party servers; all HTTP paths are covered by mocked-fetch tests against recorded fixtures.
+- **No real Vercel-timeout kill test** — the lock-loss scenario is covered indirectly by the "budget enforced before the first fetch" tests; actually killing a function mid-run is not reproducible locally.
+- **Native fetch's 20-redirect default** not exercised — the spec explicitly declines to promise a redirect cap.
+- **The manual post-deploy procedure (steps 1–6)** — an operational step for `/deploy`, requiring the real dev Bubble DB.
 
 ## Deployment
 _To be added by /deploy_

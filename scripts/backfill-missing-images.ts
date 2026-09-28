@@ -40,13 +40,16 @@ import { getBubbleConfig } from '../src/lib/bubble/client'
 import {
   RESYNC_PROCEDURE,
   applyResync,
+  assertJournalMatchesSupabaseTarget,
   assertResyncTargetIsTestBubble,
   buildJournal,
   createBackfillClient,
   loadResyncTargets,
+  parseBackfillCliArgs,
   readJournalFile,
   runFill,
   writeJournalFile,
+  type BackfillCliArgs,
 } from '../src/lib/backfill/missing-images'
 
 // ---- Environment ----
@@ -76,46 +79,29 @@ function supabaseProjectRef(url: string | undefined): string {
 }
 
 // ---- Arguments ----
+// Parsing and mode/flag validation live in the core module
+// (parseBackfillCliArgs), where they are unit-tested; this wrapper only
+// consumes the result.
 
-interface Args {
-  apply: boolean
-  resync: boolean
-  list: boolean
-  journal: string | null
-  limit: number | null
-}
-
-function parseArgs(argv: string[]): Args {
-  const valueOf = (name: string): string | null => {
-    const prefix = `--${name}=`
-    const arg = argv.find((candidate) => candidate.startsWith(prefix))
-    return arg ? arg.slice(prefix.length) : null
-  }
-
-  const rawLimit = valueOf('limit')
-  if (rawLimit !== null && (!/^\d+$/.test(rawLimit) || Number(rawLimit) === 0)) {
-    throw new Error(`--limit muss eine positive Zahl sein, nicht: ${rawLimit}`)
-  }
-
-  const unknown = argv.filter(
-    (arg) =>
-      arg.startsWith('--') &&
-      !['--apply', '--resync', '--list'].includes(arg) &&
-      !arg.startsWith('--journal=') &&
-      !arg.startsWith('--limit=')
-  )
-  if (unknown.length > 0) {
-    throw new Error(`Unbekannte Option(en): ${unknown.join(', ')}`)
-  }
-
-  return {
-    apply: argv.includes('--apply'),
-    resync: argv.includes('--resync'),
-    list: argv.includes('--list'),
-    journal: valueOf('journal'),
-    limit: rawLimit === null ? null : Number(rawLimit),
-  }
-}
+/** Usage text for --help — the six-step procedure follows it. */
+const USAGE = [
+  'Verwendung: npm run backfill:images -- [Optionen]',
+  '',
+  '  Fill-Phase (Standard):',
+  '    (keine Option)          Dry run — zeigt nur an, was passieren wuerde',
+  '    --apply                 setzt image_url, schreibt ein Journal',
+  '    --limit=<n>             verarbeitet hoechstens n Kandidaten (nur Fill-Phase)',
+  '',
+  '  Resync-Phase (separat aufzurufen):',
+  '    --resync --list         listet die bubble_ids der gefuellten, gestempelten Artikel',
+  '    --resync --apply        setzt bubble_synced_at / bubble_id dieser Artikel zurueck',
+  '    --journal=<Datei>       Journal einer frueheren --apply-Fuellung (Standard: neuestes)',
+  '',
+  '    --resync laeuft AUSSCHLIESSLICH gegen die Bubble-ENTWICKLUNGS-Datenbank',
+  '    (BUBBLE_USE_TEST_VERSION=true) — es gibt keinen Schalter, der das aufhebt.',
+  '',
+  '  --help                    diese Hilfe',
+].join('\n')
 
 /** Newest journal in scripts/, so --journal can be omitted in the common case. */
 function newestJournalPath(): string {
@@ -159,7 +145,7 @@ function printBanner(mode: string): void {
 
 // ---- Phases ----
 
-async function runFillPhase(args: Args): Promise<void> {
+async function runFillPhase(args: BackfillCliArgs): Promise<void> {
   printBanner(args.apply ? 'FILL — APPLY (schreibt image_url)' : 'FILL — DRY RUN (schreibt nicht)')
 
   const supabase = createBackfillClient()
@@ -208,7 +194,7 @@ async function runFillPhase(args: Args): Promise<void> {
   if (report.failures.length > 0) process.exitCode = 1
 }
 
-async function runResyncPhase(args: Args): Promise<void> {
+async function runResyncPhase(args: BackfillCliArgs): Promise<void> {
   const mode = args.apply ? 'RESYNC — APPLY (setzt Sync-Stempel zurueck)' : 'RESYNC — LIST (schreibt nicht)'
   printBanner(mode)
 
@@ -218,6 +204,11 @@ async function runResyncPhase(args: Args): Promise<void> {
 
   const journalPath = args.journal ?? newestJournalPath()
   const journal = readJournalFile(journalPath)
+
+  // Review B-4: the journal's row ids are only meaningful inside the Supabase
+  // project they were filled in — a journal from another project aborts hard.
+  assertJournalMatchesSupabaseTarget(journal)
+
   console.log(
     `[Backfill] Journal: ${journalPath} (${journal.rows.length} gefuellte Artikel, ` +
       `Umgebung beim Fuellen: ${journal.bubble_environment})`
@@ -259,16 +250,20 @@ async function runResyncPhase(args: Args): Promise<void> {
 // ---- Entry point ----
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2))
+  const args = parseBackfillCliArgs(process.argv.slice(2))
+
+  if (args.help) {
+    console.log(USAGE)
+    console.log('')
+    console.log(RESYNC_PROCEDURE)
+    return // exit 0 — asking for help is never an error
+  }
+
   loadEnvFile(resolve(process.cwd(), '.env.local'))
 
   if (args.resync) {
     await runResyncPhase(args)
     return
-  }
-
-  if (args.list) {
-    throw new Error('--list gehoert zu --resync und hat ohne diese Option keine Bedeutung.')
   }
 
   await runFillPhase(args)
