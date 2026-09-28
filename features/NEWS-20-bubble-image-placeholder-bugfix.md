@@ -1,6 +1,6 @@
 # NEWS-20: Bugfix — Lazy-loading placeholder stored as image_url breaks the Bubble sync
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-09-25
 **Last Updated:** 2026-09-25 (QA re-verification, round 4)
 
