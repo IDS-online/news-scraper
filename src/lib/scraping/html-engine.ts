@@ -331,8 +331,14 @@ async function fetchHtml(url: string, sourceId: string, timestamp: string): Prom
 /**
  * Detect charset from Content-Type header or HTML meta tags.
  * Falls back to UTF-8.
+ *
+ * Exported for `src/lib/scraping/og-image-fallback.ts` (NEWS-21), which fetches
+ * article pages with the same limits and must decode them the same way. Sharing
+ * the function rather than copying it is deliberate: a second copy would be free
+ * to drift, and an ISO-8859-1 page decoded as UTF-8 silently turns umlauts in a
+ * meta tag's URL into U+FFFD, i.e. into a broken image address.
  */
-function detectCharset(contentType: string, bytes: Uint8Array): string {
+export function detectCharset(contentType: string, bytes: Uint8Array): string {
   // 1. Try Content-Type header: charset=windows-1252 or charset=iso-8859-1
   const headerMatch = contentType.match(/charset=["']?([a-zA-Z0-9_-]+)/i)
   if (headerMatch) return headerMatch[1]

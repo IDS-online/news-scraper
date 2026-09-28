@@ -1,6 +1,6 @@
 # NEWS-21: Generic Image Fallback (og:image / twitter:image) in the Scraping Scheduler
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-09-28
 **Last Updated:** 2026-09-28 (review round 4: budget-clipped articles are recovered only by
 the backfill script, budget wording covers both entry points; round 3: Bubble re-sync + env
