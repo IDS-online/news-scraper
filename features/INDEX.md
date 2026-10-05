@@ -37,7 +37,8 @@
 | NEWS-20 | Bugfix: Lazy-loading placeholder (`data:,`) stored as image_url breaks Bubble sync | Deployed | [NEWS-20-bubble-image-placeholder-bugfix.md](NEWS-20-bubble-image-placeholder-bugfix.md) | 2026-09-25 |
 | NEWS-21 | Generic Image Fallback (og:image / twitter:image) in the Scraping Scheduler | In Review | [NEWS-21-generic-image-fallback.md](NEWS-21-generic-image-fallback.md) | 2026-09-28 |
 | NEWS-22 | Source Creation — Show How (or Whether) an Image Was Found | Planned | [NEWS-22-wizard-image-diagnostics.md](NEWS-22-wizard-image-diagnostics.md) | 2026-09-28 |
+| NEWS-23 | Bugfix: German day-first dates parsed month-first (day/month swap) | Planned | [NEWS-23-date-parsing-day-month-swap.md](NEWS-23-date-parsing-day-month-swap.md) | 2026-10-05 |
 
 <!-- Add features above this line -->
 
-## Next Available ID: NEWS-23
+## Next Available ID: NEWS-24
