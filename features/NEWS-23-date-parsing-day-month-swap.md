@@ -191,7 +191,193 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
 <!-- Sections below are added by subsequent skills -->
 
 ## Tech Design (Solution Architect)
-_To be added by /architecture_
+
+> Added 2026-10-06 on branch `docs/NEWS-23-architecture`. Design only — no code in this
+> section. The spec above is frozen; this section maps every hardened requirement onto
+> files, mechanisms and tests. Line references checked against the code on 2026-10-06:
+> the defective function sits at `html-engine.ts:434-450` (the spec header says 428-444 —
+> same function, minor drift, nothing else differs).
+
+### 1. What gets built, in one paragraph
+
+Date parsing moves out of `html-engine.ts` into a new, single-purpose module
+`src/lib/scraping/parse-date.ts` that implements a fixed five-stage pipeline (strict
+machine formats first, German chrono next, English chrono only for strings carrying an
+alphabetic month name, never native `Date` for day-first-shaped numeric strings, scrape
+timestamp as the caller's last resort). The HTML engine delegates to it; the RSS engine is
+not touched. The scheduler gains a future-date warning at the single point where articles
+from both engines pass on their way into the database. Stored damage is handled by a
+report-only repair tool following the existing NEWS-21 pattern: thin CLI in `scripts/`,
+tested logic in `src/lib/backfill/`, per-row manual approval, no automatic branch.
+
+### 2. Component structure
+
+```
+Scraping pipeline (per source)
++-- RSS engine (rss-engine.ts)            — UNCHANGED, guard tests only
++-- HTML engine (html-engine.ts)
+|   +-- parseDate()                        — becomes a thin delegate, kept exported
+|       +-- NEW parse-date.ts              — the actual five-stage pipeline
++-- Scheduler (scheduler.ts)
+    +-- NEW future-date guard              — warns (does not block) before insert
+
+Repair tooling (one-off, never part of the pipeline)
++-- scripts/repair-swapped-dates.ts        — thin CLI (mirrors backfill-missing-images.ts)
+    +-- NEW src/lib/backfill/swapped-dates.ts — candidate query, swap reading, apply-one
+```
+
+### 3. The parse pipeline (`src/lib/scraping/parse-date.ts`)
+
+One exported entry point: it takes the raw scraped string plus an **injectable reference
+time** (`refDate`, defaulting to "now") and returns an ISO timestamp or null. The caller —
+unchanged in behavior — keeps the scrape timestamp when it gets null. Stages run strictly
+in this order; each exists because a review round proved skipping it reintroduces a defect:
+
+| # | Stage | What it does | Trap it closes |
+|---|-------|--------------|----------------|
+| 0 | Sanitize | Trim; strip a leading German weekday token (`Mo.,`/`Di.,`/… and full names, optional comma) before any matching | `chrono.de`'s *first* match on `Mo., 11.08.2026` is the bare weekday → "previous Monday". Stripping the prefix removes the decoy entirely; as a second belt, stage 2 never takes a first match blindly (see below) |
+| 1 | Strict machine formats | Regex-detect full ISO 8601 and RFC 822/1123 shapes; only these may use the native date parser (which is correct and timezone-exact for them) | `chrono.de` partial-matches only the clock time of an RFC 822 string and returns the scrape day (verified in spec). Machine formats must therefore be recognized *before* chrono runs |
+| 2 | German chrono (`chrono.de`) with `refDate` | Parse all candidates, then select the **best match**, not the first: prefer matches that contain an explicit year, then the longest matched text; take the first *complete* date (day + month known) under that ordering | First-match selection is exactly the weekday-prefix bug; year-preference also makes the "two dates in one string" case deterministic (first full date wins, per spec) |
+| 3 | Guarded English chrono | Runs only after a stage-2 miss **and** only if the string contains an alphabetic month token (checked against the English month-name list, full and abbreviated — not "any letters") | German pages from English CMS templates emit `11 Oct 2026`, which `chrono.de` misses. Running English chrono on *numeric* strings would reintroduce the exact swap this ticket fixes, so numeric-only strings can never reach this stage |
+| 4 | Null | Return null; caller falls back to scrape timestamp (today's behavior, unchanged) | Native `Date` is dead as a fallback: a `D(D).M(M).YY(YY)`-shaped string that chrono rejects (`1.8.26`, `11. 08. 2026`) ends here — it must never produce a silent US-order parse (today it turns `1.8.26` into January) |
+
+Properties the pipeline guarantees (each pinned by tests, section 7):
+
+- Day-first wins for ambiguous numeric dates (`05.04.2026` → 5 April) — deliberate default,
+  German sources are the domain.
+- Date ranges resolve to a date *within* the range; which endpoint is implementation-defined
+  by chrono (dash forms → end, `bis` forms → start, as verified in the spec) and documented,
+  not engineered around.
+- Relative German expressions (`vor 2 Stunden`, `gestern`) now resolve against `refDate` —
+  a documented behavior change (today they silently fall through to the scrape timestamp).
+- Bare dates carry chrono's implicit time: **12:00 server-local** instead of the old native
+  midnight. This is the documented side effect from the spec's dependency note on issue #2
+  (see section 6).
+- The source's `language` field plays no role: the pipeline is input-driven (format
+  detection), so a `language != de` source showing German dates parses correctly and vice
+  versa — exactly the edge case the spec demands.
+
+The module also exports two small pure helpers for the repair tool (so they are unit-tested
+under `src/lib/`, where the project's test rule applies): the **swapped reading** of a
+stored timestamp (day and month exchanged; undefined when the exchange is invalid or when
+day equals month — the swap-invariant case the repair must not flag).
+
+### 4. Changes to existing pipeline files
+
+- **`html-engine.ts`:** `parseDate` stays exported (its tests and signature survive) but
+  becomes a one-line delegate into the new module. The call site (line ~191) is unchanged.
+  The 550-line engine does not grow; the date logic becomes independently testable.
+- **`scheduler.ts` — future-date guard:** placed in the insert path (around
+  `insertArticles`), the one spot both engines' articles flow through and where the source
+  name is in scope. Rule: parsed `published_at` more than 24 h after "now" → the article is
+  **stored anyway** (slightly-ahead publish dates are legitimate) and a warning naming the
+  source, the article URL and the parsed value goes to the log — matching the scheduler's
+  existing `console.warn` conventions. No threshold configuration, no env variable.
+- **`rss-engine.ts`:** zero changes. Its RFC 822/ISO behavior is already pinned by
+  `rss-engine.test.ts:34-51`; those tests double as the required "RSS unaffected" proof and
+  get one added guard test documenting the expected fallback for a non-conformant localized
+  `pubDate` (per the spec's dependency note: documented, not fixed).
+
+### 5. Repair tool — report-only, per-row approval
+
+Follows the proven NEWS-21 split: `scripts/repair-swapped-dates.ts` is a thin tsx CLI
+(same `.env.local` loading, same Supabase project-ref banner), all logic lives in
+`src/lib/backfill/swapped-dates.ts` with tests. Uses existing env vars only
+(`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`).
+
+- **Candidate selection** (joined server-side, no N+1): articles of HTML sources that have
+  a `selector_date`, whose `created_at` lies before the fix-deploy timestamp — passed as a
+  mandatory `--deployed-before=<ISO>` argument, not hardcoded — and whose `published_at` is
+  in the future relative to `created_at`. Rows where day equals month are excluded
+  (swap-invariant per spec).
+- **Report (default mode):** one line per candidate with article id, title, URL, source
+  name, `created_at`, stored `published_at` and the swapped reading — everything the human
+  needs to judge "swap victim or genuine announcement". Nothing is written.
+- **Approval mechanism:** `--apply --id=<article-uuid>` corrects exactly one row per
+  invocation — the row is re-validated against the candidate criteria at apply time, the
+  before/after values are printed, nothing is deleted. There is **no** bulk apply, no
+  auto-correction branch, no heuristic: round 3 proved every genuine swap has a swapped
+  reading with day ≤ 12, and genuine future announcements are indistinguishable without the
+  raw string (which is stored nowhere). `--apply` without `--id` is refused.
+- **Mandatory output notes**, printed on every run: (a) the dark figure — swaps that landed
+  in the past are unfindable, the parser fix is the real cure; (b) the Bubble limitation —
+  already-synced records keep their wrong "Date publishing" until the NEWS-21-noted PATCH
+  ticket exists.
+
+### 6. GitHub issue #2 (bare-date midnight timezone) — recommendation: do NOT fix here
+
+The spec permits fixing #2 alongside if the same lines are touched. They are — but the
+recommendation is to leave #2 open: this ticket's pipeline already *changes* the bare-date
+semantics as a side effect (implicit noon server-local instead of implicit midnight, which
+under production UTC keeps the calendar day correct for German sources — the previous-day
+symptom no longer reproduces), while #2's actual ask (define what a date-only string
+*means*: source-locale timezone, date-typed storage, or an "unknown time" marker) is a
+design decision of its own with schema implications this ticket explicitly excludes. Doing
+a half-fix inside a bugfix PR muddies both tickets. Instead: the side effect is documented
+here and in the PR text, and issue #2 gets a comment pointing at the changed baseline.
+*(Decision point for review — flipping this means adding an explicit timezone policy to
+stage 2 and calling it out in the PR as the spec requires.)*
+
+### 7. Test plan — files and the machinery
+
+Test style follows `og-image-fallback.test.ts` / `scheduler.test.ts` (plain vitest,
+fixture-driven, no network). The suite runs under the existing `TZ=UTC` pin.
+
+| File | New/extended | Contents |
+|------|--------------|----------|
+| `src/lib/scraping/parse-date.test.ts` | new | All mandated literal cases (section 8 table); relative expressions asserted against an injected `refDate`; weekday prefixes; ranges; two-date strings; machine-format regressions; the never-US-parse cases; the swap-invariant case; unit tests for the swapped-reading helper |
+| same file — property/fuzz test | new | Generates a large number of random valid calendar days with a **self-written seeded PRNG** (no new package — `fast-check` would violate the no-new-dependency rule), renders each in every supported shape (numeric day-first 2-/4-digit year, written-out and abbreviated German months, optional weekday prefix, optional time suffix, optional surrounding text), asserts exact round-trip to the generated day; the seed is printed on failure so any find is reproducible |
+| `src/lib/scraping/html-engine.test.ts` | extended | The verbatim production regression: an HTML fixture whose date cell reads `11.08.2026` yields a stored `published_at` of August 11. Existing `parseDate` tests keep passing (date-prefix assertions are noon-safe under UTC) |
+| `src/lib/scraping/rss-engine.test.ts` | extended | Existing RFC 822/ISO tests remain the "unchanged" proof; plus one guard test pinning the fallback for a localized `pubDate` |
+| `src/lib/scraping/scheduler.test.ts` | extended | Future-date guard: an article parsed > 24 h ahead is inserted *and* a warning naming source and value is logged; an article inside the window logs nothing |
+| `src/lib/backfill/swapped-dates.test.ts` | new | Candidate predicate (in-scope/out-of-scope rows, day==month exclusion, deploy-timestamp boundary), swapped-reading output, apply-one re-validation, report notes present |
+
+### 8. Acceptance-criteria coverage map
+
+| Acceptance criterion | Covered by |
+|---|---|
+| German numeric day-first, day ≤ 12 and > 12, `DD.MM.YYYY`/`D.M.YYYY`/`DD.MM.YY`, ± time | parse-date unit tests + fuzz test |
+| ISO 8601 / RFC 822 keep parsing exactly as today | parse-date machine-format regression tests + existing html-engine/rss-engine tests |
+| Written-out German months (`8. Mai 2026`, `8. März 2026`, `11. August 2026`) | parse-date unit tests (umlaut case explicit) + fuzz test (month-name rendering) |
+| Weekday prefixes (`Mo.,`/`Di., 11.08.2026` → literal date) | parse-date unit tests + fuzz test (optional prefix dimension) |
+| Relative expressions as documented behavior change | parse-date unit tests with injected `refDate` |
+| `1.8.26` / `11. 08. 2026` never US-parsed | parse-date unit tests (null-or-correct assertion) |
+| RSS engine unaffected | existing + extended rss-engine guard tests, zero diff in `rss-engine.ts` |
+| Production case verbatim (HTML fixture `11.08.2026` → stored Aug 11) | html-engine integration test |
+| Repair: report-only, per-row manual approval, no auto branch | swapped-dates unit tests + CLI design (no bulk-apply path exists to test) |
+| Dark figure documented | spec text + mandatory script output, asserted in swapped-dates tests |
+| Bubble limitation documented | spec text + mandatory script output, asserted in swapped-dates tests |
+| Property-based fuzz test | parse-date fuzz test (seeded, reproducible) |
+| Future-date guard (store + warn, source + value named) | scheduler test |
+| Edge: `08.08.2026` swap-invariant | parse-date unit test + repair candidate-predicate test |
+| Edge: nonsense (`13.13.2026`) → scrape-timestamp fallback, no crash | parse-date unit test |
+| Edge: ranges yield in-range date, endpoint documented | parse-date unit tests (dash and `bis` forms) |
+| Edge: two dates in one string → first full date | parse-date unit test |
+| Edge: `language != de` sources | by construction (format detection, no `language` input) + English-token unit tests |
+
+### 9. Tech decisions, justified
+
+- **Own module instead of growing `html-engine.ts`:** the engine file is ~550 lines; the
+  pipeline needs its own exhaustive test file; the repair tool reuses the swap helper —
+  three consumers, one module. The old export stays, so nothing outside the file notices.
+- **Best-match selection instead of pre-stripping only:** stripping weekday prefixes
+  handles the known decoy; year-preferring match selection also fixes decoys nobody listed
+  yet (the fuzz test hunts for those mechanically).
+- **Guard in the scheduler, not in the engines:** one placement covers both engines without
+  touching the RSS engine (which this ticket must not change), and the source name needed
+  for the warning is in scope there.
+- **Repair as NEWS-21-pattern CLI, not SQL:** the spec leaves script-vs-SQL open; a script
+  wins because the per-row approval loop, the re-validation at apply time and the mandatory
+  caveat output are logic — and logic in this project lives under `src/lib/` with tests.
+- **No new packages** (fuzzing hand-rolled, chrono 2.9.0 already installed), **no schema
+  change** (the raw date string stays unstored — the dark figure is accepted and
+  documented, per round 3), **no new env vars**, **no per-source configuration**.
+
+### 10. Dependencies
+
+None added. Uses `chrono-node` 2.9.0 (installed), `vitest` (installed), `tsx` (installed,
+already the runner for `backfill:images`). One new npm script alias for the repair CLI in
+`package.json` (pattern: the existing `backfill:*` entries).
 
 ## QA Test Results
 _To be added by /qa_
