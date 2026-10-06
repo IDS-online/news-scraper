@@ -40,10 +40,15 @@
  * ## Documented behaviour changes (not regressions)
  *
  * - Bare dates now carry chrono's implicit **12:00 server-local** instead of
- *   native midnight. Under production UTC the calendar day is unaffected. The
- *   question of what a date-only string *should* mean (source-locale timezone,
- *   date-typed column, "time unknown" marker) is GitHub issue #2 and stays
- *   open — it has schema implications this bugfix excludes on purpose.
+ *   native midnight. Under production UTC the calendar day is unaffected. One
+ *   measurable consequence (QA BUG-6/7): the articles API's `to=` date filter
+ *   now excludes a bare-dated article when the window ends between that day's
+ *   midnight and noon — rows the old midnight stamp kept in. The window
+ *   narrows by at most half a day for such rows, and the exact instant stays
+ *   tied to production UTC. The question of what a date-only string *should*
+ *   mean (source-locale timezone, date-typed column, "time unknown" marker)
+ *   is GitHub issue #2 and stays open — it has schema implications this
+ *   bugfix excludes on purpose.
  * - Relative German expressions (`vor 2 Stunden`, `gestern`) now resolve
  *   against `refDate`. Previously they were not recognized at all and the
  *   article silently received the scrape timestamp.
@@ -74,6 +79,17 @@ export interface ParseScrapedDateOptions {
  */
 const ISO_8601 =
   /^(\d{4})-(\d{2})-(\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s*(?:Z|[+-]\d{2}:?\d{2}))?)?$/
+
+/**
+ * Year-first numeric dates with `/` or `.` separators: `2026/08/11`,
+ * `2026.08.11`, optional time of day. Unambiguous — the 4-digit year leads,
+ * so the remaining order can only be month, day — and correctly handled by
+ * the native parser, which read them before this module existed (QA BUG-1
+ * caught the first pipeline version dropping them to null). The separator is
+ * captured and back-referenced, so a mixed `2026/08.11` stays out.
+ */
+const YEAR_FIRST =
+  /^(\d{4})([./])(\d{1,2})\2(\d{1,2})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/
 
 /**
  * RFC 822 / RFC 1123, the shape RSS feeds use
@@ -110,6 +126,21 @@ const EN_MONTH_NUMBER: Record<string, number> = {
  */
 const LEADING_WEEKDAY =
   /^(?:montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonnabend|sonntag|mo|di|mi|do|fr|sa|so)\.?(?:\s*,\s*|\s+)/i
+
+/**
+ * A day missing its ordinal dot before a German month name: `11 März 2026`.
+ *
+ * `chrono.de` requires the dot — `11. März 2026` parses, `11 März 2026` does
+ * not — while months whose name German and English share (`April`, `August`,
+ * `Mai`/`May`-adjacent shapes) slipped through the English stage 3 and parsed
+ * anyway. That was QA BUG-2's inconsistency: `11 April 2026` worked,
+ * `11 März 2026` silently became the scrape timestamp. Restoring the dot
+ * sends BOTH through the German stage 2. Only genuine month names are
+ * rewritten (`11 Meter 2026` stays untouched), and the rewrite runs AFTER the
+ * stage-1 machine-format check, so an RFC 822 string never sees it.
+ */
+const DE_DAY_MONTH_MISSING_DOT =
+  /\b(\d{1,2})\s+(Januar|Februar|März|Maerz|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember|Jan|Feb|Mär|Apr|Jun|Jul|Aug|Sep|Sept|Okt|Nov|Dez)\b/gi
 
 /**
  * English month names, full and abbreviated. The gate for stage 3.
@@ -169,15 +200,22 @@ export function parseScrapedDate(
   // the caller keeps the scrape timestamp instead.
   const iso = normalized.match(ISO_8601)
   const rfc = iso ? null : normalized.match(RFC_822)
+  const yearFirst = iso || rfc ? null : normalized.match(YEAR_FIRST)
 
-  if (iso || rfc) {
+  if (iso || rfc || yearFirst) {
     const real = iso
       ? isRealCalendarDate(Number(iso[1]), Number(iso[2]), Number(iso[3]))
-      : isRealCalendarDate(
-          expandTwoDigitYear(Number(rfc![3])),
-          EN_MONTH_NUMBER[rfc![2].toLowerCase()],
-          Number(rfc![1])
-        )
+      : rfc
+        ? isRealCalendarDate(
+            expandTwoDigitYear(Number(rfc[3])),
+            EN_MONTH_NUMBER[rfc[2].toLowerCase()],
+            Number(rfc[1])
+          )
+        : isRealCalendarDate(
+            Number(yearFirst![1]),
+            Number(yearFirst![3]),
+            Number(yearFirst![4])
+          )
 
     if (real) {
       const native = new Date(normalized)
@@ -185,14 +223,29 @@ export function parseScrapedDate(
         return native.toISOString()
       }
     }
+    // One-way street, on purpose (review L1): once a machine shape has
+    // matched, a failed calendar validation or native parse ends at null —
+    // never a fall-through to chrono. On exactly these strings chrono.de
+    // partial-matches only the clock time and would return the scrape day
+    // wearing the feed's time, which is the silent-defect class this module
+    // exists to stop. Null hands the caller its honest scrape-timestamp
+    // fallback instead.
     return null
   }
 
   // --- Stage 0b: strip the weekday decoy ---
   const withoutWeekday = normalized.replace(LEADING_WEEKDAY, '').trim()
-  const candidate = withoutWeekday || normalized
+
+  // --- Stage 0c: restore the missing ordinal dot before a German month ---
+  const candidate = (withoutWeekday || normalized).replace(
+    DE_DAY_MONTH_MISSING_DOT,
+    '$1. $2'
+  )
 
   // --- Stage 2: German, day-first ---
+  // Year-less dates (`11.08.`) resolve to the year nearest refDate, which can
+  // lie in the FUTURE (review L2). Accepted: the scheduler's future-date
+  // guard makes exactly those rows loud instead of letting them sit silently.
   const german = selectBestMatch(chrono.de.parse(candidate, refDate))
   if (german) return german.start.date().toISOString()
 

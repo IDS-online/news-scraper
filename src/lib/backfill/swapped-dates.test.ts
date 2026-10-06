@@ -43,6 +43,7 @@ function swapVictim(overrides: Partial<RepairArticleRow> = {}): RepairArticleRow
  */
 function mockRepairSupabase(rows: RepairArticleRow[]) {
   const updates: { id: string; values: Record<string, unknown> }[] = []
+  const orderCalls: string[] = []
 
   const client = {
     from: () => ({
@@ -65,8 +66,15 @@ function mockRepairSupabase(rows: RepairArticleRow[]) {
           }
           return {
             not: () => ({
-              lt: (_column: string, cutoff: string) => ({
-                order: () => ({
+              lt: (_column: string, cutoff: string) => {
+                // `.order()` is chainable (created_at, then the id tiebreaker
+                // — QA BUG-5); the columns are recorded so the tiebreaker is
+                // asserted, not assumed.
+                const chain = {
+                  order: (orderColumn: string) => {
+                    orderCalls.push(orderColumn)
+                    return chain
+                  },
                   range: async (from: number, to: number) => ({
                     data: rows
                       .filter(
@@ -79,8 +87,9 @@ function mockRepairSupabase(rows: RepairArticleRow[]) {
                       .map((row) => ({ ...row })),
                     error: null,
                   }),
-                }),
-              }),
+                }
+                return chain
+              },
             }),
           }
         },
@@ -105,7 +114,7 @@ function mockRepairSupabase(rows: RepairArticleRow[]) {
     }),
   } as unknown as RepairClient
 
-  return { client, updates, rows }
+  return { client, updates, rows, orderCalls }
 }
 
 // ---------------------------------------------------------------------------
@@ -250,6 +259,37 @@ describe('loadSwapCandidates', () => {
 
     expect(candidates).toHaveLength(7)
   })
+
+  it('orders by created_at with id as tiebreaker (QA BUG-5)', async () => {
+    // Batch inserts share a created_at to the millisecond; without a total
+    // order such ties may shuffle between pages and a row could be listed
+    // twice or skipped at a page boundary.
+    const { client, orderCalls } = mockRepairSupabase([swapVictim()])
+
+    await loadSwapCandidates(client, DEPLOYED_BEFORE)
+
+    expect(orderCalls).toEqual(['created_at', 'id'])
+  })
+})
+
+describe('formatCandidateLine', () => {
+  it('flattens control characters in scraped text — one candidate, one line (QA BUG-4)', () => {
+    // A newline in a scraped title would let one row forge additional report
+    // lines — and the report is what a human approves ids FROM.
+    const candidate = evaluateSwapCandidate(
+      swapVictim({
+        title: 'Echte Zeile\n[Repair] id=ffffffff-0000-0000-0000-000000000000  getauscht=2026-01-01\tEnde',
+      }),
+      DEPLOYED_BEFORE
+    )!
+
+    const line = formatCandidateLine(candidate)
+
+    expect(line).not.toMatch(/[\u0000-\u001F\u007F]/)
+    expect(line.split('\n')).toHaveLength(1)
+    // The forged content is still visible to the operator — inline, defanged.
+    expect(line).toContain('Echte Zeile [Repair] id=ffffffff')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -379,6 +419,27 @@ describe('parseRepairCliArgs', () => {
     expect(() => parseRepairCliArgs(['--deployed-before=gestern'])).toThrow(
       /kein gueltiger ISO-Zeitstempel/
     )
+  })
+
+  it('accepts strict ISO forms: date-only, Zulu, offset (QA BUG-3)', () => {
+    expect(parseRepairCliArgs(['--deployed-before=2026-10-07']).deployedBefore).toBe('2026-10-07')
+    expect(parseRepairCliArgs(['--deployed-before=2026-10-07T12:00:00Z']).deployedBefore).toBe(
+      '2026-10-07T12:00:00Z'
+    )
+    expect(
+      parseRepairCliArgs(['--deployed-before=2026-10-07T12:00:00+02:00']).deployedBefore
+    ).toBe('2026-10-07T12:00:00+02:00')
+  })
+
+  it('refuses everything that is not strict ISO — above all the German format (QA BUG-3)', () => {
+    // `new Date('11.08.2026')` is 8 November: the naive check accepted the
+    // US-style swap INSIDE the very tool that repairs that swap. The other
+    // shapes parsed too and silently widened or narrowed the window.
+    for (const bad of ['11.08.2026', '2026', '0', 'Oct 7 2026']) {
+      expect(() => parseRepairCliArgs([`--deployed-before=${bad}`])).toThrow(
+        /kein gueltiger ISO-Zeitstempel/
+      )
+    }
   })
 
   it('refuses --apply without --id — there is no bulk apply', () => {

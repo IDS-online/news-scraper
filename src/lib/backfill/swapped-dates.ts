@@ -212,6 +212,10 @@ export async function loadSwapCandidates(
       .not('source.selector_date', 'is', null)
       .lt('created_at', deployedBefore.toISOString())
       .order('created_at', { ascending: true })
+      // Tiebreaker (QA BUG-5): batch inserts share a created_at to the
+      // millisecond, and without a total order such ties may shuffle between
+      // pages — a row could be listed twice or skipped at a page boundary.
+      .order('id', { ascending: true })
       .range(from, from + pageSize - 1)
 
     if (error) {
@@ -229,13 +233,21 @@ export async function loadSwapCandidates(
   return candidates
 }
 
-/** One report line per candidate — everything the human needs to judge. */
+/**
+ * One report line per candidate — everything the human needs to judge.
+ *
+ * Control characters are flattened to spaces (QA BUG-4): title and URL are
+ * scraped text, and a newline in a title would let one row forge additional
+ * report lines — the report is exactly what a human approves ids FROM, so a
+ * forged line is a forged approval basis. One candidate, one line, always.
+ */
 export function formatCandidateLine(candidate: SwapCandidate): string {
-  return (
+  const line =
     `[Repair] id=${candidate.id}  Quelle="${candidate.source_name}"  ` +
     `gescrapt=${candidate.created_at}  gespeichert=${candidate.published_at}  ` +
     `getauscht=${candidate.swapped_published_at}  "${candidate.title}"  ${candidate.url}`
-  )
+  // All of C0 (incl. \n \r \t) plus DEL, collapsed runs into one space.
+  return line.replace(/[\u0000-\u001F\u007F]+/g, ' ')
 }
 
 /**
@@ -366,6 +378,19 @@ export interface RepairCliArgs {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
+ * Strict ISO 8601 for `--deployed-before`: date-only, or date + time with an
+ * explicit Z / offset. Everything else is refused.
+ *
+ * QA BUG-3 showed why a naive `new Date()` check is not a validation here:
+ * it happily accepted `11.08.2026` — and read it US-style month-first, the
+ * day/month swap INSIDE the very tool that exists to repair that swap. It
+ * also accepted `2026`, `0` and `Oct 7 2026`, each silently widening or
+ * narrowing the candidate window.
+ */
+const ISO_DEPLOYED_BEFORE =
+  /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2}))?$/
+
+/**
  * Parse and validate the CLI arguments.
  *
  * The refusals are the design, not pedantry:
@@ -415,8 +440,16 @@ export function parseRepairCliArgs(argv: string[]): RepairCliArgs {
         'Beispiel: --deployed-before=2026-10-07T12:00:00Z'
     )
   }
-  if (Number.isNaN(new Date(rawDeployedBefore).getTime())) {
-    throw new Error(`--deployed-before ist kein gueltiger ISO-Zeitstempel: ${rawDeployedBefore}`)
+  if (
+    !ISO_DEPLOYED_BEFORE.test(rawDeployedBefore) ||
+    Number.isNaN(new Date(rawDeployedBefore).getTime())
+  ) {
+    throw new Error(
+      `--deployed-before ist kein gueltiger ISO-Zeitstempel: ${rawDeployedBefore} — ` +
+        'erwartet wird striktes ISO 8601: YYYY-MM-DD oder YYYY-MM-DDTHH:mm:ss mit Z bzw. ±HH:MM. ' +
+        'Insbesondere KEIN deutsches Datumsformat: "11.08.2026" wuerde month-first gelesen — ' +
+        'exakt der Dreher, den dieses Werkzeug repariert.'
+    )
   }
   args.deployedBefore = rawDeployedBefore
 

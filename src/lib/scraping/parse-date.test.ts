@@ -127,6 +127,20 @@ describe('parseScrapedDate — unambiguous machine formats (regression guard)', 
     expect(parse('2024-02-29')).toBe('2024-02-29T00:00:00.000Z')
     expect(parse('29 Feb 2024 10:00:00 GMT')).toBe('2024-02-29T10:00:00.000Z')
   })
+
+  it('reads year-first slash and dot dates exactly as the old native parse did (QA BUG-1)', () => {
+    // Regression caught by QA: the first pipeline version dropped these to
+    // null. The 4-digit year leads, so the remaining order can only be
+    // month-day — unambiguous, and the native parser handles them correctly.
+    expect(parse('2026/08/11')).toBe('2026-08-11T00:00:00.000Z')
+    expect(parse('2026.08.11')).toBe('2026-08-11T00:00:00.000Z')
+    expect(parse('2026/08/11 14:30')).toBe('2026-08-11T14:30:00.000Z')
+  })
+
+  it('rejects an impossible year-first date instead of guessing', () => {
+    expect(parse('2026.13.01')).toBeNull()
+    expect(parse('2026/02/30')).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -158,6 +172,20 @@ describe('parseScrapedDate — written-out German month names', () => {
     expect(parse('Veröffentlicht am 11. August 2026 um 14:30 Uhr')).toBe(
       '2026-08-11T14:30:00.000Z'
     )
+  })
+
+  it('parses a day missing its ordinal dot before a German month — consistently (QA BUG-2)', () => {
+    // Before this fix: `11 April 2026` happened to work (April doubles as an
+    // English month token, stage 3) while `11 März 2026` silently fell back
+    // to the scrape timestamp — chrono.de requires the dot after the day.
+    // Both now parse via the German stage after the dot is restored.
+    expect(day('11 März 2026')).toBe('2026-03-11')
+    expect(day('11 April 2026')).toBe('2026-04-11')
+    expect(day('8 Mai 2026')).toBe('2026-05-08')
+  })
+
+  it('restores the dot only before genuine month names — a non-month word stays unparsed', () => {
+    expect(parse('11 Meter 2026')).toBeNull()
   })
 })
 
