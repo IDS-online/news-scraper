@@ -51,9 +51,16 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
 - [ ] `parseDate()` in `html-engine.ts` parses German day-first numeric dates correctly for
       days ≤ 12 (`11.08.2026` → 11 Aug) and > 12 (`28.08.2026` → 28 Aug), with and without a
       time component, for `DD.MM.YYYY`, `D.M.YYYY` and `DD.MM.YY` shapes.
-- [ ] Unambiguous formats keep parsing exactly as today: ISO 8601 (`2026-08-11T10:30:00Z`),
-      RFC 822 (`Mon, 11 Aug 2026 10:30:00 GMT`), and written-out German dates
-      (`11. August 2026`) — covered by regression tests, not assumed.
+- [ ] Unambiguous machine formats keep parsing exactly as today: ISO 8601
+      (`2026-08-11T10:30:00Z`) and RFC 822 (`Mon, 11 Aug 2026 10:30:00 GMT`) — covered by
+      regression tests, not assumed.
+- [ ] **Written-out German month names parse to the correct day after the fix** — this is a
+      second silent defect the same fix covers, found during spec review (2026-10-06, verified
+      against the installed dependencies): today `8. Mai 2026` and `8. März 2026` (umlaut) are
+      not recognized at all (the article silently receives the scrape timestamp instead of its
+      real date), and `11. August 2026` comes back as August **10** (native parse + timezone
+      shift) or August **1** (English chrono fallback). Required test cases: `8. Mai 2026`,
+      `8. März 2026`, `11. August 2026` — each resolving to its literal day.
 - [ ] Relative German expressions that work today (`vor 2 Stunden`) still work — the fix must
       not regress chrono's existing relative-date handling.
 - [ ] The RSS engine's `parseDate()` behavior on RFC 822 / ISO inputs is covered by a test
