@@ -2,22 +2,36 @@
 
 ## Status: Planned
 **Created:** 2026-10-05
+**Last Updated:** 2026-10-06 (adversarial review round: repair heuristic made conservative,
+weekday-prefix and machine-format-ordering traps pinned, relative-dates premise corrected,
+blast radius completed)
 **Claimed via:** GitHub Issue #28
 
 ## Dependencies
 - Affects NEWS-4 (HTML DOM Scraping Engine) — the defect lives in `parseDate()`
   (`src/lib/scraping/html-engine.ts:428-444`).
 - NEWS-3 (RSS engine) has its own `parseDate()` (`rss-engine.ts:123-128`, native `Date` only).
-  RSS feeds deliver RFC 822 / ISO dates, which parse unambiguously — it is **in scope to verify
-  this with a test**, but no behavior change is expected there.
+  RSS feeds *normally* deliver RFC 822 / ISO dates, which parse unambiguously — it is **in scope
+  to verify this with a test**, but no behavior change is expected there. A non-conformant feed
+  delivering a localized `pubDate` (`11.08.2026`) hits the identical swap in the RSS path
+  (verified 2026-10-06); that stays **out of scope** here, documented, optionally pinned by a
+  guard test defining the expected fallback.
 - **Related but separate defect in the same function:** GitHub issue #2 (bare dates are
   timestamped at server-local midnight instead of a defined timezone). Not fixed by this ticket;
   if `/architecture` finds the two fixes share the same few lines, fixing #2 alongside is
-  permitted but must be called out explicitly in the PR.
+  permitted but must be called out explicitly in the PR. Verified boundary (2026-10-06):
+  `chrono.de` implies **12:00 server-local** for bare dates — not midnight — so the
+  previous-day symptom of #2 does not reproduce in the new path (checked under Europe/Berlin
+  and UTC). Side effect to document: the implicit time of bare dates changes from midnight to
+  noon and remains server-timezone-dependent.
 - Downstream consumer note: `published_at` feeds the news feed ordering (NEWS-7), the Bubble
-  sync (NEWS-19, field "Date publishing"), and retention (NEWS-12) — retention deletes by
-  article age, so a future-dated article is also **retention-immune** until its false date
-  passes. This raises the defect above "cosmetic".
+  sync (NEWS-19, field "Date publishing"), retention (NEWS-12) — retention deletes by article
+  age, so a future-dated article is also **retention-immune** until its false date passes —,
+  the articles API's `from`/`to` date filters (`src/app/api/articles/route.ts:112-116`;
+  future-dated articles escape every date-window query), the relative-time display
+  (`article-card.tsx:122`), and the wizard/scrape preview, which shows the parsed date to the
+  admin at setup time — a useful manual verification point after the fix. This raises the
+  defect above "cosmetic".
 
 ## Background
 
@@ -61,18 +75,41 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
       real date), and `11. August 2026` comes back as August **10** (native parse + timezone
       shift) or August **1** (English chrono fallback). Required test cases: `8. Mai 2026`,
       `8. März 2026`, `11. August 2026` — each resolving to its literal day.
-- [ ] Relative German expressions that work today (`vor 2 Stunden`) still work — the fix must
-      not regress chrono's existing relative-date handling.
+- [ ] **Weekday-prefixed dates parse to the literal date:** `Mo., 11.08.2026` and
+      `Di., 11.08.2026` → 11 Aug. Verified 2026-10-06: `chrono.de`'s *first* match on such a
+      string is the bare weekday token — `parseDate('Mo., 11.08.2026')` returns the *previous
+      Monday*, a plausible near-past date and therefore a silent defect worse than today's.
+      Implementation note for `/architecture`: never take the first match blindly; prefer the
+      longest match / the match carrying a year, or strip weekday prefixes beforehand.
+- [ ] Relative German expressions (`vor 2 Stunden`, `vor 3 Tagen`, `gestern`) parse to the
+      computed time — **as a documented behavior change, not a regression guard.** Verified
+      2026-10-06: today these are not recognized at all (English chrono returns null; the
+      article silently receives the scrape timestamp), so there is nothing existing to
+      preserve; the fix makes them work for the first time, covered by tests.
+- [ ] Numeric strings the German parser does not recognize (`1.8.26`, `11. 08. 2026`) must
+      **never** fall through to the native US-style parse — verified 2026-10-06: that path
+      turns `1.8.26` into January. The outcome is either a correct day-first date or the
+      scrape-timestamp fallback; native `Date` no longer acts as a fallback for strings shaped
+      like `D(D).M(M).YY(YY)`.
 - [ ] The RSS engine's `parseDate()` behavior on RFC 822 / ISO inputs is covered by a test
       proving it is unaffected (no code change expected there).
 - [ ] A regression test reproduces the production case verbatim: a date cell of `11.08.2026`
       on an HTML fixture results in a stored `published_at` of August 11 — the exact swap this
       ticket exists for.
-- [ ] **Repair of stored data:** a one-off, dry-run-by-default script (or documented SQL,
-      decided in `/architecture`) identifies articles whose `published_at` lies in the future
-      relative to their `created_at`/now and corrects them by swapping day and month where the
-      swap yields a plausible past date; everything else is only reported, never guessed.
-      Nothing is deleted; rows are corrected in place.
+- [ ] **Repair of stored data — deliberately conservative:** a one-off, dry-run-by-default
+      script (or documented SQL, decided in `/architecture`) identifies candidates among
+      articles of **HTML sources with a `selector_date`** whose `created_at` predates the fix
+      deploy and whose `published_at` lies in the future relative to `created_at`. Candidates
+      whose **swapped** reading has day > 12 may be auto-corrected with `--apply`; candidates
+      with day ≤ 12 in the swapped reading are **report-only** (manual approval per row) — a
+      genuine future-dated announcement is indistinguishable from a swap there, and the script
+      must never "correct" a correct date. Nothing is deleted; rows are corrected in place.
+- [ ] **Documented dark figure:** swapped dates that happen to land in the past (e.g.
+      `03.04.2026` read as March 4th) are **not identifiable at all** — the raw date string is
+      stored nowhere (`articles` has no raw-date column), so no query can tell them from
+      correct dates; depending on the scrape month this hides most swap candidates. The spec
+      and the repair script's output state this plainly: the repair fixes what is findable;
+      correctness going forward comes from the parser fix, not from the repair.
 - [ ] **Documented limitation:** already-synced Bubble records keep their wrong
       "Date publishing" — the sync has no update path (create-only; see the NEWS-21 follow-up
       note on the future PATCH ticket). The repair fixes Supabase; Bubble catches up only for
@@ -84,8 +121,11 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
   script must not flag it.
 - `13.13.2026` or other nonsense: parse fails → fallback to scrape timestamp (today's
   behavior), no crash.
-- A genuinely future-dated article (source pre-publishes an event announcement): the repair
-  script must not "correct" a date whose swap is implausible (e.g. day > 12) — report-only.
+- A genuinely future-dated article (source pre-publishes an event announcement): protected by
+  the conservative repair rule above — day ≤ 12 candidates are never auto-swapped, day > 12
+  swaps are impossible dates and the string would not have parsed in the first place.
+- `11.08.2026 – 14:30 Uhr` (dash between date and time): the date parses correctly, the time
+  component is dropped (implicit noon) — acceptable, documented, no fix required.
 - Sources with `language != de` whose pages still show German dates (and vice versa): the fix
   must not key off the source's `language` field alone; `/architecture` decides between
   locale-aware parsing order and format detection.
@@ -96,6 +136,12 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
 - Expected shape of the fix (final call in `/architecture`): stop handing ambiguous numeric
   strings to native `Date` first; prefer `chrono.de` for day-first parsing (already proven
   correct for both reproduced cases, already a dependency — no new package).
+- **Parsing order is part of correctness, not an implementation detail:** `chrono.de` must
+  never run unfiltered before unambiguous machine formats — on an RFC 822 string it
+  partial-matches only the time of day and returns the scrape date (verified 2026-10-06:
+  `Mon, 11 Aug 2026 10:30:00 GMT` → today). Order: strict ISO/RFC 822 detection first,
+  `chrono.de` for the remainder, no native-`Date` fallback for day-first-shaped numeric
+  strings (see acceptance criteria).
 - No schema change, no new environment variables, no per-source configuration.
 - New logic under `src/lib/` arrives with tests (project rule); the CI gate
   (`lint && typecheck && test && build`) must stay green.
