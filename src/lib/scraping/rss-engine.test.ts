@@ -49,6 +49,40 @@ describe('parseDate', () => {
     expect(parseDate(undefined)).toBeNull()
     expect(parseDate('')).toBeNull()
   })
+
+  /**
+   * NEWS-23 guard tests. The RSS engine is deliberately NOT changed by that
+   * ticket — `rss-engine.ts` has a zero-line diff — and these cases are the
+   * proof rather than the assumption.
+   *
+   * The two tests above already cover the formats that matter: RSS 2.0
+   * mandates RFC 822 `pubDate` and Atom mandates RFC 3339, both of which are
+   * unambiguous (month spelled out, or year first) and therefore immune to the
+   * day/month swap that NEWS-23 fixes in the HTML engine.
+   */
+  it('is unaffected by the NEWS-23 fix for the formats feeds actually use', () => {
+    // Day > 12 and day <= 12, RFC 822 and ISO: all four read literally.
+    expect(parseDate('Tue, 11 Aug 2026 10:30:00 GMT')).toBe('2026-08-11T10:30:00.000Z')
+    expect(parseDate('Fri, 28 Aug 2026 10:30:00 GMT')).toBe('2026-08-28T10:30:00.000Z')
+    expect(parseDate('2026-08-11T10:30:00Z')).toBe('2026-08-11T10:30:00.000Z')
+    expect(parseDate('2026-08-28T10:30:00Z')).toBe('2026-08-28T10:30:00.000Z')
+  })
+
+  it('DOCUMENTED LIMITATION: a non-conformant localized pubDate is still read month-first', () => {
+    // A feed that violates RSS 2.0 by emitting a German numeric date hits the
+    // identical swap here, because this parser is native `Date` only:
+    // `11.08.2026` becomes 8 November. This is OUT OF SCOPE for NEWS-23 by
+    // explicit decision (the spec's dependency note) and is pinned here so the
+    // behaviour is visible and any future change to it is deliberate.
+    //
+    // The fix, should a real feed ever need it, is to delegate to
+    // `@/lib/scraping/parse-date` exactly as the HTML engine now does.
+    expect(parseDate('11.08.2026')).toBe('2026-11-08T00:00:00.000Z')
+
+    // Day > 12 is not even parseable, so such an article silently receives the
+    // scrape timestamp instead (the caller's `?? now` fallback).
+    expect(parseDate('28.08.2026')).toBeNull()
+  })
 })
 
 describe('extractImageUrl', () => {

@@ -44,9 +44,11 @@ import {
   resolveScrapeStatus,
   runScheduledScrape,
   scrapeSourceById,
+  warnOnFutureDates,
 } from '@/lib/scraping/scheduler'
 import { scrapeRssFeed } from '@/lib/scraping'
 import { createExhaustedBudget, createRunBudget } from '@/lib/scraping/run-budget'
+import type { NormalizedArticle } from '@/types/article'
 import type { Source } from '@/types/source'
 import {
   DT_ARTICLE_HTML,
@@ -152,6 +154,88 @@ describe('resolveScrapeStatus', () => {
       last_error: null,
       last_scrape_warning: 'Artikel ohne Titel uebersprungen; Artikel ohne Titel uebersprungen',
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// NEWS-23: the future-date guard, as a pure function.
+// ---------------------------------------------------------------------------
+
+describe('warnOnFutureDates', () => {
+  const NOW = new Date('2026-10-06T09:00:00Z')
+
+  function makeArticle(publishedAt: string, url = 'https://quelle.de/artikel/1'): NormalizedArticle {
+    return {
+      title: 'Testartikel',
+      url,
+      description: null,
+      image_url: null,
+      source_category_raw: null,
+      published_at: publishedAt,
+      source_id: 'src-1',
+      language: 'de',
+    }
+  }
+
+  it('warns for an article more than 24h ahead, naming source, URL and the parsed value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    // The production signature: `11.08.2026` read month-first on 6 October
+    // became 8 November — weeks ahead, retention-immune, invisible to every
+    // date-window query. Exactly the row this guard must make loud.
+    const warned = warnOnFutureDates(
+      [makeArticle('2026-11-08T12:00:00.000Z')],
+      'Beispiel Dental',
+      NOW
+    )
+
+    expect(warned).toBe(1)
+    expect(warn).toHaveBeenCalledTimes(1)
+    const message = warn.mock.calls[0][0] as string
+    expect(message).toContain('Beispiel Dental')
+    expect(message).toContain('https://quelle.de/artikel/1')
+    expect(message).toContain('2026-11-08T12:00:00.000Z')
+  })
+
+  it('stays silent inside the 24h window — slightly-ahead publish dates are legitimate', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const warned = warnOnFutureDates(
+      [
+        makeArticle('2026-10-07T08:00:00.000Z'), // 23h ahead
+        makeArticle('2026-10-07T09:00:00.000Z'), // exactly 24h ahead — still inside
+        makeArticle('2026-10-05T09:00:00.000Z'), // the past is never suspicious
+      ],
+      'Beispiel Dental',
+      NOW
+    )
+
+    expect(warned).toBe(0)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it('warns per offending article, not per batch', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const warned = warnOnFutureDates(
+      [
+        makeArticle('2026-11-08T12:00:00.000Z', 'https://quelle.de/artikel/1'),
+        makeArticle('2026-10-06T10:00:00.000Z', 'https://quelle.de/artikel/2'),
+        makeArticle('2026-12-08T12:00:00.000Z', 'https://quelle.de/artikel/3'),
+      ],
+      'Beispiel Dental',
+      NOW
+    )
+
+    expect(warned).toBe(2)
+    expect(warn).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips an unparseable published_at without warning or crashing', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(warnOnFutureDates([makeArticle('kein datum')], 'Quelle', NOW)).toBe(0)
+    expect(warn).not.toHaveBeenCalled()
   })
 })
 
@@ -616,5 +700,75 @@ describe('runScheduledScrape — HTML source end to end', () => {
     // html-engine way) it would wrongly land at the root.
     expect(inserted[0].image_url).toBe(HTML_LISTING_EXPECTED_IMAGE)
     expect(results[0].images_from_fallback).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// NEWS-23: the future-date guard in the real insert path.
+// ---------------------------------------------------------------------------
+
+describe('runScheduledScrape — future-date guard (NEWS-23)', () => {
+  /** A feed whose single item is dated years ahead — the swap's signature, writ large. */
+  const FUTURE_FEED_URL = 'https://zukunft.de/feed/'
+  const FUTURE_ARTICLE_URL = 'https://zukunft.de/news/artikel-1'
+  const FUTURE_PUBLISHED_AT = '2150-01-01T05:00:00.000Z'
+  const FUTURE_FEED_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+  <title>Zukunftsquelle</title>
+  <link>https://zukunft.de/</link>
+  <description>Quelle mit verdaechtig vordatiertem Artikel</description>
+  <language>de-DE</language>
+  <item>
+    <title>Artikel aus der Zukunft</title>
+    <link>${FUTURE_ARTICLE_URL}</link>
+    <pubDate>Wed, 01 Jan 2150 05:00:00 +0000</pubDate>
+  </item>
+</channel>
+</rss>`
+
+  it('still inserts a far-future article AND logs a warning naming source, URL and value', async () => {
+    // Store-and-warn, never reject: a slightly-ahead date is legitimate, and a
+    // parser path that silently drops rows is harder to debug than one that
+    // logs. The warning is the whole point — the production defect sat
+    // unnoticed for months because nothing surfaced it.
+    feedXmlByUrl.set(FUTURE_FEED_URL, FUTURE_FEED_XML)
+    const { client, inserted } = mockSchedulerSupabase({
+      sources: [makeSource({ name: 'Zukunftsquelle', url: FUTURE_FEED_URL })],
+    })
+    createClient.mockReturnValue(client)
+    stubPages()
+
+    const results = await runScheduledScrape(createRunBudget())
+
+    expect(results[0].errors).toEqual([])
+    expect(inserted).toHaveLength(1)
+    expect(inserted[0].published_at).toBe(FUTURE_PUBLISHED_AT)
+
+    const warnings = vi
+      .mocked(console.warn)
+      .mock.calls.map((call) => String(call[0]))
+      .filter((message) => message.includes('Zukunft'))
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('Zukunftsquelle')
+    expect(warnings[0]).toContain(FUTURE_ARTICLE_URL)
+    expect(warnings[0]).toContain(FUTURE_PUBLISHED_AT)
+  })
+
+  it('logs no future-date warning for a normally dated feed', async () => {
+    const { client, inserted } = mockSchedulerSupabase({
+      sources: [makeSource({ url: MEDIA_FEED_URL })],
+    })
+    createClient.mockReturnValue(client)
+    stubPages()
+
+    await runScheduledScrape(createRunBudget())
+
+    expect(inserted).toHaveLength(1)
+    const futureWarnings = vi
+      .mocked(console.warn)
+      .mock.calls.map((call) => String(call[0]))
+      .filter((message) => message.includes('Zukunft'))
+    expect(futureWarnings).toEqual([])
   })
 })

@@ -10,6 +10,13 @@ import type { NormalizedArticle } from '@/types/article'
 const MAX_BATCH_INSERT = 100
 const JOB_TIMEOUT_MS = 30_000
 
+/**
+ * NEWS-23: how far ahead of "now" a publication date may be before it is
+ * logged as suspicious. Publishing slightly into the future is legitimate, so
+ * this is a warning threshold, never a rejection threshold.
+ */
+const FUTURE_DATE_TOLERANCE_MS = 24 * 60 * 60 * 1000
+
 // ---- Types ----
 
 export interface SchedulerResult {
@@ -236,6 +243,12 @@ async function scrapeSource(
     const fallback = await applyImageFallback(newArticles, budget)
     result.images_from_fallback = fallback.filled
 
+    // 3.6 NEWS-23: surface suspiciously future-dated articles.
+    // Placed here rather than in either engine: this is the single point both
+    // the RSS and the HTML path flow through on their way into the database,
+    // and the source name needed for a useful warning is in scope.
+    warnOnFutureDates(newArticles, source.name)
+
     // 4. Insert new articles in batches
     const inserted = await insertArticles(supabase, newArticles, result)
     result.articles_inserted = inserted
@@ -403,6 +416,49 @@ export function normalizeUrlForComparison(url: string): string {
   } catch {
     return url.toLowerCase().replace(/\/+$/, '')
   }
+}
+
+/**
+ * NEWS-23: warn about articles whose publication date lies in the future.
+ *
+ * The articles are still inserted. A publication date slightly ahead of now is
+ * legitimate (an embargoed piece, a clock skew, a source that pre-dates its
+ * evening edition), so blocking them would drop real news; and a parser that
+ * silently discards rows is harder to debug than one that logs.
+ *
+ * But a future date is suspicious by definition, and it is the exact signature
+ * of the day/month swap this ticket fixed: `11.08.2026` read month-first
+ * produced 8 November, three months ahead. Such a row also escapes the
+ * retention sweep (it deletes by age) and every `from`/`to` window query, so
+ * it can sit in the database unnoticed for months — which is precisely what
+ * happened: the defect was found by a human happening to look at the feed.
+ * This guard removes the "happening to".
+ *
+ * Exported for the tests; the threshold is fixed, with no env variable and no
+ * per-source configuration (the spec excludes both).
+ */
+export function warnOnFutureDates(
+  articles: NormalizedArticle[],
+  sourceName: string,
+  now: Date = new Date()
+): number {
+  const cutoff = now.getTime() + FUTURE_DATE_TOLERANCE_MS
+  let warned = 0
+
+  for (const article of articles) {
+    const publishedAt = new Date(article.published_at).getTime()
+    if (Number.isNaN(publishedAt) || publishedAt <= cutoff) continue
+
+    warned++
+    console.warn(
+      `[Scheduler] Verdaechtiges Datum in der Zukunft: Quelle "${sourceName}", ` +
+        `published_at=${article.published_at}, URL=${article.url}. ` +
+        'Moeglicherweise ein Datums-Parsing-Fehler (vgl. NEWS-23) oder eine ' +
+        'vordatierte Veroeffentlichung — der Artikel wurde trotzdem gespeichert.'
+    )
+  }
+
+  return warned
 }
 
 /**

@@ -1,6 +1,6 @@
 # NEWS-23: Bugfix — German Day-First Dates Parsed Month-First (Day/Month Swap)
 
-## Status: Planned
+## Status: In Progress
 **Created:** 2026-10-05
 **Last Updated:** 2026-10-06 (review round 3: auto-repair branch proven mathematically dead —
 repair is now fully manual-approve; date-range, multi-date and English-month-token edge cases
