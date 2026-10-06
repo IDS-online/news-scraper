@@ -123,6 +123,20 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
       note on the future PATCH ticket). The repair fixes Supabase; Bubble catches up only for
       records synced after the fix, or once the PATCH ticket exists. This is stated in the
       spec and the repair script's output, not silently omitted.
+- [ ] **Property-based test (fuzz) — the machine that outlasts review rounds:** a test
+      generates a large number of random valid calendar dates, renders each in the supported
+      shapes (numeric day-first with 2- and 4-digit years, written-out and abbreviated German
+      month names, optional weekday prefix, optional time suffix, optional surrounding text
+      like `Veröffentlicht am …`), and asserts every single one parses back to exactly the
+      generated calendar day — no silent swap, no silent scrape-timestamp fallback for a
+      supported shape. Three review rounds each found a format trap humans had missed; this
+      test searches the format space mechanically on every CI run.
+- [ ] **Future-date guard in the pipeline:** an article whose parsed `published_at` lies more
+      than 24 hours in the future is still stored (slightly-ahead publish dates are
+      legitimate) but is **logged as a warning naming the source and the parsed value** — a
+      future date is suspicious by definition and must surface as a signal in the logs, not
+      as a months-later surprise in Bubble. The production defect this ticket fixes was found
+      by a human happening to look; this guard removes the "happening to".
 
 ## Edge Cases
 - `08.08.2026` (day == month): swap-invariant — must parse to 8 Aug either way; the repair
