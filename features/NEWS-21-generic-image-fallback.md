@@ -1,6 +1,6 @@
 # NEWS-21: Generic Image Fallback (og:image / twitter:image) in the Scraping Scheduler
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-09-28
 **Last Updated:** 2026-09-28 (review round 4: budget-clipped articles are recovered only by
 the backfill script, budget wording covers both entry points; round 3: Bubble re-sync + env
@@ -594,4 +594,28 @@ all acceptance criteria fulfilled or properly documented as manual; no blocking 
 - **The manual post-deploy procedure (steps 1–6)** — an operational step for `/deploy`, requiring the real dev Bubble DB.
 
 ## Deployment
-_To be added by /deploy_
+**Shipped 2026-09-28 (PR #27), verified in production through 2026-10-06. Timeline:**
+
+- **2026-09-28:** merged and auto-deployed via Vercel; the scheduler fallback has been live
+  since. Same day: Bubble *test* database wiped by the operator and all sync stamps reset
+  (full re-sync pattern proven by the NEWS-20 migration).
+- **2026-09-28 — lesson recorded:** the first backfill-script run hit the *development*
+  database — the local `.env.local` points there, not at production. No damage (fill-only),
+  but it produced the standing team rule: before any writing run, name and verify the target
+  project. Production repair was therefore executed **by the operator** on the same day via
+  generated SQL (51 articles, produced from a manual Supabase export plus the shared
+  extraction logic; every one gained an image) — no agent wrote to production.
+- **2026-09-29, 06:00 UTC:** full re-sync into the Bubble test database — 213 records,
+  **0 without picture**.
+- **2026-09-29 → 10-01 — three-day observation: PASS.** 34 new articles arrived through the
+  regular pipeline, every single one with a picture (including articles from both RSS
+  sources that caused this ticket — the fallback demonstrably fired in production).
+- **2026-10-05:** live switch. `BUBBLE_USE_TEST_VERSION=false` set for the Production scope
+  only (split-scope entries per the Vercel rule), redeploy, full stamp reset, fresh sync
+  into the empty Bubble **live** database: 245 records, 0 without picture.
+- **2026-10-06:** first fully automatic live run — 13 new articles, all with pictures.
+
+**Noted for later (not this ticket):** Bubble-record updates need the PATCH follow-up ticket
+before any correction of already-synced live records; the hotlink-protection display issue
+(sources serving a stop image to foreign referers) was handled app-side by the operator
+(`no-referrer` display), self-hosting images remains an option if more sources block.
