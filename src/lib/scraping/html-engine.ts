@@ -1,9 +1,9 @@
 import * as cheerio from 'cheerio'
-import * as chrono from 'chrono-node'
 import { franc } from 'franc'
 import type { NormalizedArticle, ScrapeResult, ScrapeError } from '@/types/article'
 import type { Source } from '@/types/source'
 import { pickImageUrl } from '@/lib/image-url'
+import { parseScrapedDate } from '@/lib/scraping/parse-date'
 
 // ---- Configuration ----
 
@@ -188,7 +188,10 @@ export async function scrapeHtmlPage(source: Source): Promise<ScrapeResult> {
         const dateEl = $container.find(source.selector_date)
         if (dateEl.length > 0) {
           const dateText = dateEl.text().trim()
-          const parsed = parseDate(dateText)
+          // `now` is the scrape timestamp: it is both the reference point for
+          // relative expressions ("vor 2 Stunden") and the fallback when the
+          // cell yields nothing conclusive — unchanged from before NEWS-23.
+          const parsed = parseDate(dateText, new Date(now))
           if (parsed) {
             publishedAt = parsed
           }
@@ -423,30 +426,25 @@ export function normalizeUrl(raw: string): string {
 // ---- Date Parsing ----
 
 /**
- * Parse a date string using chrono-node, which supports:
- * - ISO 8601 (2024-01-15T10:30:00Z)
- * - European formats (15.01.2024, 15/01/2024)
- * - Relative expressions ("vor 2 Stunden", "2 hours ago")
- * - Common natural language dates
+ * Parse a scraped date string into ISO 8601, or null if unparseable.
  *
- * Returns ISO 8601 string or null if unparseable.
+ * NEWS-23: the implementation moved to `@/lib/scraping/parse-date`. This stays
+ * a thin delegate so the engine's public surface is unchanged, while the
+ * five-stage pipeline (and its exhaustive test suite, including a fuzz test)
+ * lives in its own module and can be reused by the repair tooling.
+ *
+ * What changed behind this signature: German day-first dates are no longer
+ * read month-first. `11.08.2026` used to come back as 8 November — a date in
+ * the future — because `new Date()` was tried first and V8 reads a dotted
+ * numeric date US-style. See the module docstring for the full pipeline and
+ * the documented behaviour changes.
+ *
+ * @param refDate reference point for relative expressions ("vor 2 Stunden").
+ *   The caller passes the scrape timestamp, so a run is self-consistent and
+ *   tests can pin it.
  */
-export function parseDate(raw: string): string | null {
-  if (!raw) return null
-
-  // First try native Date parse for well-formatted ISO strings
-  const nativeDate = new Date(raw)
-  if (!isNaN(nativeDate.getTime())) {
-    return nativeDate.toISOString()
-  }
-
-  // Use chrono-node for more complex/localized date formats
-  const parsed = chrono.parseDate(raw)
-  if (parsed) {
-    return parsed.toISOString()
-  }
-
-  return null
+export function parseDate(raw: string, refDate?: Date): string | null {
+  return parseScrapedDate(raw, { refDate })
 }
 
 // ---- Language Detection ----

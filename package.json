@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "backfill:bubble": "node scripts/backfill-bubble-synced.mjs",
-    "backfill:images": "tsx scripts/backfill-missing-images.ts"
+    "backfill:images": "tsx scripts/backfill-missing-images.ts",
+    "repair:dates": "tsx scripts/repair-swapped-dates.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

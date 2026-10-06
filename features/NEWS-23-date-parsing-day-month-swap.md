@@ -1,6 +1,6 @@
 # NEWS-23: Bugfix — German Day-First Dates Parsed Month-First (Day/Month Swap)
 
-## Status: Planned
+## Status: In Review
 **Created:** 2026-10-05
 **Last Updated:** 2026-10-06 (review round 3: auto-repair branch proven mathematically dead —
 repair is now fully manual-approve; date-range, multi-date and English-month-token edge cases
@@ -380,7 +380,305 @@ already the runner for `backfill:images`). One new npm script alias for the repa
 `package.json` (pattern: the existing `backfill:*` entries).
 
 ## QA Test Results
-_To be added by /qa_
+
+> Added 2026-10-06 by `/qa` against branch `feat/NEWS-23-date-parsing` (commit `1015f84`).
+> Method: the committed test suite was run, but **every acceptance criterion was re-verified
+> independently** with probe harnesses written from the spec text, not from the implementation's
+> own test file. In addition the pre-NEWS-23 `parseDate()` was reconstructed verbatim from
+> `git show main:src/lib/scraping/html-engine.ts` and diffed against the new pipeline over a
+> 49-format corpus, to find regressions the new tests could not be expected to catch.
+
+### CI gate
+
+| Check | Result |
+|---|---|
+| `npm run lint` | PASS — 0 errors, 12 warnings, all pre-existing on `main` (incl. the `MAX_REDIRECTS` warning in `html-engine.ts`, verified present before this branch) |
+| `npm run typecheck` | PASS |
+| `npm run test` | PASS — 17 files, 405 tests |
+| `npm run build` | PASS |
+
+### Acceptance criteria
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| 1 | German numeric day-first, day ≤ 12 and > 12, `DD.MM.YYYY`/`D.M.YYYY`/`DD.MM.YY`, ± time | **PASS** | `11.08.2026`→Aug 11, `28.08.2026`→Aug 28, `1.8.2026`→Aug 1, `11.08.26`→Aug 11, `11.08.2026 14:30`→Aug 11 14:30, `31.12.2026`, `12.12.2026`, `01.01.2026` all literal |
+| 2 | ISO 8601 / RFC 822 keep parsing exactly as today | **PASS as written** | Old-vs-new diff: all 17 ISO and RFC 822 variants byte-identical, including offsets (`+02:00`, `+0200`), `EST`, 2-digit RFC year, milliseconds, no-seconds. **But see BUG-1** — unambiguous *non-ISO* year-first formats that worked before now return null |
+| 3 | Written-out German months parse to the correct day | **PASS** | All 3 mandated cases correct (`8. Mai 2026`→May 8, `8. März 2026`→Mar 8, `11. August 2026`→Aug 11). All 13 full and 14 abbreviated German month spellings verified, incl. `Mrz.`, `Sept.`, `Maerz`, upper/lowercase. **Gap: BUG-2** (dotless variant) |
+| 4 | Weekday-prefixed dates → literal date | **PASS** | `Mo.,`/`Di.,`/`Montag,`/`Samstag,`/`SO.,` → Aug 11. Also verified beyond spec: no comma (`Mo. 11.08.2026`, `So 11.08.2026`), `Sonnabend`, and the non-clipping case `Mondlandung am 11.08.2026`→Aug 11. No "previous Monday" result in any form |
+| 5 | Relative German expressions resolve against `refDate` | **PASS** | `vor 2 Stunden`, `vor 3 Tagen`, `gestern`, `heute`, `vorgestern`, `vor einer Stunde`, `vor 2 Wochen`, `in 2 Tagen` all exact against the injected reference. `vor 1 Monat`→null (chrono limit, harmless: falls back to scrape timestamp) |
+| 6 | Unrecognized numeric strings never reach the native US parse | **PASS** | `1.8.26`→null (old: 8 Jan), `11. 08. 2026`→null (old: 8 Nov). Also verified the stage-3 veto holds: `August 11, 2026 11.08.2026` → Aug 11, not Nov 8 |
+| 7 | RSS engine proven unaffected by test | **PASS** | `rss-engine.ts` has a zero-line diff. Guard tests cover RFC 822 and ISO for day ≤ 12 and > 12, plus an honest `DOCUMENTED LIMITATION` test pinning the out-of-scope localized-`pubDate` swap rather than hiding it |
+| 8 | Production case reproduced verbatim | **PASS** | `html-engine.test.ts` drives a real HTML fixture whose `.datum` cell reads `11.08.2026` through `scrapeHtmlPreview` → which delegates to `scrapeHtmlPage` (verified: same code path, not a preview-only shortcut) → `published_at` starts `2026-08-11` |
+| 9 | Repair: report-only, per-row manual approval, no auto branch | **PASS** | No bulk-apply or automatic code path exists. `--deployed-before` mandatory, `--apply` without `--id` refused, `--id` without `--apply` refused, `--id` UUID-validated, unknown options refused, apply re-validates the live row and guards the write with `.eq('published_at', <read value>)`. **See BUG-3, BUG-4, BUG-5** |
+| 10 | Documented dark figure | **PASS** | `REPAIR_NOTES[0]`, printed by both `runSwapReport` and `applySwapRepair` via `printRepairNotes`, never skippable |
+| 11 | Documented Bubble limitation | **PASS** | `REPAIR_NOTES[1]`, same unconditional path |
+| 12 | Property-based fuzz test | **PASS** | 2000 iterations, hand-rolled mulberry32 (no new dependency), seed printed on failure and overridable via `PARSE_DATE_FUZZ_SEED`. **QA stressed it with 20 additional seeds — 0 failures.** Coverage gap noted below |
+| 13 | Future-date guard: store + warn, naming source and value | **PASS** | Warns per offending article (not per batch), names source/URL/parsed value, 24 h boundary inclusive (exactly 24 h ahead stays silent), unparseable `published_at` neither warns nor crashes, article still inserted. Covered as a pure function *and* end-to-end through `runScheduledScrape` |
+| 14 | Edge `08.08.2026` swap-invariant, repair must not flag | **PASS** | Parses to Aug 8; `swappedDateReading('2026-08-08…')`→`undefined`, so `evaluateSwapCandidate` can never flag it |
+| 15 | Edge `13.13.2026` → fallback, no crash | **PASS** | null. Also verified: `30.02.2026`, `29.02.2026` (non-leap), `32.01.2026`, `00.01.2026`, `11.00.2026`, `00.00.0000`, `2026-13-01` → all null; `29.02.2024` → Feb 29 correctly accepted |
+
+**15 criteria: 15 passed, 0 failed.**
+
+### Documented edge cases
+
+| Edge case | Result |
+|---|---|
+| `08.08.2026` day == month | PASS — Aug 8, never flagged by the repair |
+| `13.13.2026` nonsense | PASS — null, no crash |
+| Genuine future-dated article | PASS — no automatic correction path exists; the human sees both readings plus title and URL |
+| Date ranges | PASS — `11.–13.08.2026` and `11.-13.08.2026` → Aug 13 (end), `11. bis 13. August 2026` → Aug 11 (start). Always inside the range, never a swap, never the scrape timestamp |
+| Two dates in one string | PASS — `… 11.08.2026 \| Aktualisiert am 12.08.2026` → Aug 11 (first full date). Year preference verified: `11.08. \| Aktualisiert am 12.08.2026` → Aug 12 |
+| `11.08.2026 – 14:30 Uhr` | PASS as documented — Aug 11, time dropped (implicit noon). Same for the `\|` separator variant |
+| Sources with `language != de` | PASS — the pipeline takes no language input at all; correctness is format-driven by construction |
+| Ambiguous `05.04.2026` | PASS — Apr 5 (day-first, the deliberate default) |
+
+### Additional edge cases tested by QA (beyond the spec)
+
+Fragment rejection (the most dangerous failure mode — inventing a plausible date) is solid:
+`14:30 Uhr`, `2026`, `Mo.`, `Montag`, `August`, `August 2026`, `11.08.`, `Uhr`, `--`, `n/a`,
+`Datum unbekannt`, `kürzlich`, `soeben` → all null. No silent invention.
+
+Also verified clean: 2-digit year boundaries (`26`→2026, `49`→2049, `50`→1950, `99`→1999 —
+consistent with the module's own `expandTwoDigitYear`), 8 time-suffix variants incl. `14.30 Uhr`
+and `2:30 PM`, NBSP/U+202F/tab/newline normalization, 7 German prose wrappers, hyphen day-first
+(`11-08-2026`→Aug 11, where the old parser gave Nov 8), and hostile inputs
+(`11.08.2026'; DROP TABLE articles;--`, `<script>` prefix, NUL byte, RLO override, 5 KB of
+leading prose) — all either parsed correctly or null, never a throw.
+
+### Security audit (red team)
+
+| Vector | Finding |
+|---|---|
+| New attack surface | **None.** Zero diff in any API route, component, `middleware.ts`, RLS policy or migration. No new endpoint, no new env var, no schema change |
+| Auth / authorization bypass | **N/A** — no auth or RLS code touched. The repair tool is a local CLI, not reachable over HTTP |
+| Secret handling | **PASS** — `createRepairClient()` reads `SUPABASE_SERVICE_ROLE_KEY` from env only; never logged. The banner prints only the public `NEXT_PUBLIC_SUPABASE_URL` and project ref (deliberate wrong-project guard, matching the NEWS-21 pattern) |
+| Injection via scraped date cell | **PASS** — parser output is always either a machine-generated ISO string or null; no scraped text reaches a query. Supabase parameterizes the repair's UPDATE |
+| ReDoS / DoS on unbounded scraped input | **PASS** — measured linear: 500 KB of densely date-like text parses in 213 ms (1 KB: 5 ms). No nested quantifiers in any of the 5 regexes. Well inside the scheduler's 30 s `JOB_TIMEOUT_MS` |
+| Destructive-operation safety | **PASS** — no DELETE anywhere; UPDATE is single-row, id-pinned, re-validated, and optimistically guarded on the previously-read `published_at` so a concurrent edit errors instead of being clobbered |
+| Log / terminal injection into the human-approval report | **BUG-4 (Low)** — see below |
+| Data leaked to logs | Report lines print article title and URL to the operator's terminal only. Appropriate for the purpose; no credentials or user data |
+
+### Bugs found
+
+No **Critical** and no **High** bugs. 3 Medium, 4 Low.
+
+---
+
+#### BUG-1 — Medium — REGRESSION: unambiguous year-first dates lost, silently replaced by the scrape timestamp
+
+Formats the **old** parser handled correctly now return `null`, so the article silently receives
+the scrape timestamp — the same silent-wrong-date failure class this ticket exists to remove.
+
+| Input | Old parser | New pipeline |
+|---|---|---|
+| `2026/08/11` | `2026-08-11T00:00:00.000Z` | **null** |
+| `2026/08/11 10:30` | `2026-08-11T10:30:00.000Z` | **null** |
+| `2026/8/11` | `2026-08-11T00:00:00.000Z` | **null** |
+| `2026.08.11` | `2026-08-11T00:00:00.000Z` | **null** |
+
+Cause: `ISO_8601` admits hyphens only, so these fall past stage 1; `chrono.de` does not recognize
+them; stage 3 is month-token-gated. These shapes carry **no swap risk at all** (the 4-digit year
+is first, so day/month order is the only remaining ambiguity and both readings were already
+day-second), and `<time datetime="2026/08/11">` is a real CMS output.
+
+Steps to reproduce: `parseScrapedDate('2026/08/11')` → `null`; the reconstructed old
+`parseDate('2026/08/11')` → `2026-08-11T00:00:00.000Z`.
+
+Priority: **fix before deploy** — it is the only true regression found, and it is in the same
+"silently wrong `published_at`" category as the original defect.
+
+---
+
+#### BUG-2 — Medium — German month names without the ordinal dot are not parsed, and the behaviour differs per month
+
+`8. Mai 2026` parses; `8 Mai 2026` returns null → scrape timestamp.
+
+| Input | Result |
+|---|---|
+| `11 März 2026`, `8 Mai 2026`, `11 Dezember 2026`, `11 Januar 2026`, `11 Februar 2026`, `11 Juni 2026`, `11 Juli 2026`, `11 Oktober 2026`, `11 Maerz 2026` | **null** |
+| `11 April 2026`, `11 August 2026`, `11 September 2026`, `11 November 2026` | correct |
+
+The inconsistency is the real problem: the months that work do so only because their names are
+*also* English tokens and reach stage 3. So the same source template silently produces correct
+dates in April and wrong (scrape-timestamp) dates in March — hard to diagnose from the symptom.
+
+Not a regression (the old parser failed these too), but it falls under AC-3's statement that
+written-out German month names parse to the correct day. The mandated test cases all use the dot,
+so AC-3 is formally met.
+
+Steps to reproduce: `parseScrapedDate('11 März 2026')` → `null`, while
+`parseScrapedDate('11 April 2026')` → `2026-04-11T…`.
+
+Priority: recommended before deploy.
+
+---
+
+#### BUG-3 — Medium — the repair CLI's own `--deployed-before` is parsed US-month-first
+
+`parseRepairCliArgs` validates only `!Number.isNaN(new Date(value).getTime())`, so the repair tool
+for the day/month swap accepts a day/month-swapped cutoff:
+
+| `--deployed-before=` | Interpreted as |
+|---|---|
+| `11.08.2026` | **2026-11-07T23:00Z** (8 November, server-local) — the exact V8 US-first reading this ticket fixes |
+| `2026` | 2026-01-01T00:00Z |
+| `0` | 1999-12-31T23:00Z |
+| `Oct 7 2026` | accepted |
+
+A cutoff silently in the future makes `created_at < deployedBefore` true for every row, so the
+candidate set widens to include articles scraped *after* the fix — whose future dates are genuine
+announcements. A human approving from that report can be led to "correct" a correct date.
+
+Impact is bounded (report-only by default, one row per apply, each re-validated, nothing deleted)
+but the validation should require a strict ISO 8601 shape. Values are also not trimmed
+(`"  2026-10-07  "` is accepted and shifts by the local offset).
+
+Steps to reproduce: `parseRepairCliArgs(['--deployed-before=11.08.2026'])` is accepted and yields
+a November cutoff.
+
+Priority: recommended before the repair run (not needed for the parser deploy itself).
+
+---
+
+#### BUG-4 — Low (security) — a scraped article title can forge a report line in the human-approval output
+
+`formatCandidateLine()` interpolates the raw scraped `title` with no control-character stripping.
+The tool's entire safety model is "the operator reads one line per candidate and approves ids one
+at a time", and a title containing a newline produces a second, fully plausible line:
+
+```
+[Repair] id=11111111-…  Quelle="Quelle"  gescrapt=…  gespeichert=…  getauscht=…  "Harmloser Titel
+[Repair] id=99999999-9999-9999-9999-999999999999  Quelle="Andere"  gescrapt=…  gespeichert=…  getauscht=…  "ERFUNDENE ZEILE"  https://evil.example"  https://quelle.de/a
+```
+
+ANSI escapes survive too (`ESC[2K` + CR overwrites the line the operator just read). Damage is
+bounded: `applySwapRepair` re-validates, so a forged non-candidate id is refused with an error —
+the attack misleads the operator rather than corrupting data. Requires control over a title on an
+already-configured source.
+
+Precedent for the fix exists in this codebase: NEWS-20/BUG-7 strips leading C0 controls before the
+image-scheme allowlist.
+
+Steps to reproduce: call `formatCandidateLine` with a `title` containing `\n` followed by a
+`[Repair] id=…` string; the output is two lines.
+
+Priority: fix with BUG-3 (same file, same operator-trust surface).
+
+---
+
+#### BUG-5 — Low — report pagination can silently skip candidates
+
+`loadSwapCandidates` paginates with `.order('created_at', { ascending: true })` + offset
+`.range(from, from + pageSize - 1)`. `created_at` is **not unique** — `insertArticles` writes in
+batches of up to 100, so a batch shares one `created_at` — and Postgres does not guarantee a
+stable order for ties across separate queries. A candidate sitting on a 500-row page boundary can
+therefore be duplicated or, worse, **skipped and never reported**.
+
+Only reachable above `CANDIDATE_PAGE_SIZE` (500) pre-filter rows, and the spec expects "a handful"
+of candidates, so impact is low today. Fix: add a unique tiebreaker (`.order('id')`).
+
+Steps to reproduce: not reproducible on the current data volume; identified by code inspection of
+`swapped-dates.ts:207-227`.
+
+Priority: low, but cheap to fix.
+
+---
+
+#### BUG-6 — Low — the midnight→noon side effect narrows the articles API `to=` filter
+
+`GET /api/articles` applies `query.lte('published_at', to)` on the raw parameter
+(`src/app/api/articles/route.ts:116`). A bare-date HTML article is now stored at 12:00 instead of
+00:00, so `?to=2026-08-11` (which resolves to 00:00Z) **excludes** an article dated 11 August that
+the old midnight value included. Affects NEWS-6 and the NEWS-7 feed filters.
+
+This is the documented noon side effect meeting an existing filter that compares a date against a
+timestamp; articles with a real time of day were already affected, so the class pre-exists. Belongs
+with GitHub issue #2 (what a date-only string should mean), which the tech design deliberately
+leaves open — the right call, but the interaction should be named in the PR text.
+
+Priority: low; document in the PR, resolve with issue #2.
+
+---
+
+#### BUG-7 — Low (informational) — bare dates use 12:00 *server-local*, so a non-UTC runtime shifts the day
+
+Measured across timezones for `11.08.2026`:
+
+| TZ | Stored |
+|---|---|
+| UTC (production) | `2026-08-11T12:00:00.000Z` ✅ |
+| Europe/Berlin | `2026-08-11T10:00:00.000Z` ✅ |
+| America/Los_Angeles | `2026-08-11T19:00:00.000Z` ✅ |
+| Asia/Tokyo | `2026-08-11T03:00:00.000Z` ✅ |
+| **Pacific/Kiritimati (UTC+14)** | **`2026-08-10T22:00:00.000Z` — one day early** |
+
+Noon gives ±12 h of headroom, so every realistic deployment is safe and Vercel runs UTC. Recorded
+so the implicit "production is UTC" assumption is a stated precondition rather than luck.
+
+Priority: informational — no code change requested; worth a line in the deployment notes.
+
+### Fuzz-test coverage gap (not a bug — a note for whoever fixes BUG-1/BUG-2)
+
+The property test is genuinely effective (clean across 21 seeds, 2000 iterations each), but its
+generated space is narrower than the spec's "supported shapes": it renders only `DD.MM.YYYY`,
+`D.M.YYYY`, `DD.MM.YY`, `DD/MM/YYYY`, `D. Monat YYYY` and `D. Mon. YYYY`. It does **not** generate
+the dotless month form (BUG-2), any year-first form (BUG-1), hyphen separators, weekday prefixes
+without a comma, or 2-digit years ≥ 50 (excluded on purpose, with a comment). Both Medium bugs sit
+exactly in that blind spot — adding the two shapes to the generator would have caught them and
+would keep them caught.
+
+### Cross-browser and responsive testing
+
+**Not executed — and it is not applicable to this change.** The branch has a zero-line diff in
+`src/components/**`, `src/app/**`, `middleware.ts` and the Tailwind config; nothing renders
+differently by construction. No browser automation is available in this QA environment, so rather
+than claim coverage: the two surfaces where a user *sees* a parsed date are the wizard/scrape
+preview (`step-preview.tsx`) and the relative-time line on `article-card.tsx:122`, both of which
+only display `published_at` and are unchanged. The spec itself names the wizard preview as the
+useful manual verification point — recommended as a 2-minute post-deploy spot check at 375 px /
+768 px / 1440 px on one German HTML source, confirming the preview shows the literal date.
+
+### Regression testing (features with status "Deployed")
+
+| Feature | Result |
+|---|---|
+| NEWS-3 RSS engine | PASS — `rss-engine.ts` zero diff; 30 tests pass incl. new guard tests |
+| NEWS-4 HTML engine | PASS — `parseDate` still exported with a compatible signature (new `refDate` is optional); call site unchanged; 405-test suite green |
+| NEWS-5 Scheduler & dedup | PASS — guard added before `insertArticles` warns only, never filters; dedup, budget, `resolveScrapeStatus` untouched and tested |
+| NEWS-6 News REST API / NEWS-7 Dashboard | PASS, one caveat — no code diff; see BUG-6 for the `to=` filter interaction |
+| NEWS-12 Retention | PASS — deletes by age; the ≤12 h noon/midnight shift is immaterial. Future-dated rows were retention-immune; the fix removes the cause and the guard now surfaces new ones |
+| NEWS-19 Bubble sync | PASS — `mapping.test.ts` green; "Date publishing" now receives the correct day for new records. Create-only limitation unchanged and documented in `REPAIR_NOTES[1]` |
+| NEWS-20 Image URL hardening / NEWS-21 Image fallback | PASS — untouched; `og-image-fallback` and scheduler image tests green |
+| NEWS-1/2/8/9/14/15/16/17/18 | PASS — no diff in any route, component or policy; build green |
+
+### Production-ready recommendation
+
+**Per the project rule (no Critical or High bugs): READY.**
+
+**QA recommendation: fix BUG-1 first.** It is the one genuine regression — four unambiguous
+year-first formats that worked on `main` now silently fall back to the scrape timestamp, which is
+the same wrong-date-nobody-notices failure mode this ticket was opened to eliminate. Shipping the
+fix while reintroducing a narrower version of the symptom would be a poor trade. BUG-2 and BUG-3
+are recommended in the same pass; BUG-4 through BUG-7 can follow or be accepted as documented.
+
+The core of the work is strong: the five-stage ordering is correct and well justified, fragment
+rejection (the most dangerous failure mode) is airtight, the calendar-rollover guard catches a trap
+the old code silently passed, the repair tool's refusal rules and apply-time re-validation are
+exactly right, and the fuzz test held across 21 seeds.
+
+### Post-QA fixes (CTO addendum, 2026-10-07)
+
+All QA findings were fixed on the same branch before the PR left draft state, each pinned by
+tests (total suite 405 → 413):
+- **BUG-1** (regression, year-first `2026/08/11` / `2026.08.11`): new stage-1 branch with
+  calendar validation; good and bad cases pinned.
+- **BUG-2** (dotless German month names): stage-0 normalization — `11 März 2026` and
+  `11 April 2026` now parse consistently; non-month counter-case pinned.
+- **BUG-3** (repair CLI accepted `11.08.2026` for `--deployed-before`, US-reading it):
+  strict ISO-only validation, every reported bad case pinned individually.
+- **BUG-4** (control characters in titles could forge report lines): all C0+DEL flattened.
+- **BUG-5** (pagination tiebreaker): `.order('id')` added.
+- **BUG-6/7** and the code-review notes L1/L2: documented in the module docstrings.
 
 ## Deployment
 _To be added by /deploy_
