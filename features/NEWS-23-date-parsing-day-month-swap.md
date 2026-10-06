@@ -1,6 +1,6 @@
 # NEWS-23: Bugfix — German Day-First Dates Parsed Month-First (Day/Month Swap)
 
-## Status: In Review
+## Status: Deployed
 **Created:** 2026-10-05
 **Last Updated:** 2026-10-06 (review round 3: auto-repair branch proven mathematically dead —
 repair is now fully manual-approve; date-range, multi-date and English-month-token edge cases
@@ -681,4 +681,27 @@ tests (total suite 405 → 413):
 - **BUG-6/7** and the code-review notes L1/L2: documented in the module docstrings.
 
 ## Deployment
-_To be added by /deploy_
+
+**Shipped 2026-10-07 (PR #32), stored data repaired the same day. Timeline:**
+
+- **2026-10-07:** merged and auto-deployed via Vercel. The five-stage parse pipeline and the
+  future-date guard have been live since; every new article parses German dates day-first,
+  and any parsed date more than 24 h in the future surfaces as a log warning.
+- **2026-10-07 — repair round (per-row manual approval, as specced):** the operator exported
+  the candidate set from production (30 rows). 16 of them were noon-semantics false alarms
+  (stored day > 12 — the repair predicate excludes them; their dates are correct). The
+  remaining **14 genuine swap victims** (all source ZWP: 1× Dec 8 → Aug 12, 5× Nov 8 →
+  Aug 11, 1× Oct 9 → Sep 10, 7× Oct 8 → Aug 10) were approved **individually by the
+  operator** ("alle 14 freigeben") and corrected via operator-executed SQL — one guarded
+  single-row UPDATE each, pinned to the stored wrong value, nothing deleted. Verification
+  query afterwards: **0 remaining swaps**. Supporting argument recorded for the approval:
+  the old parser could only have produced these stored values from swapped German input,
+  and every corrected date lands shortly before its article's `created_at`.
+- **Process note:** the tested repair CLI (`npm run repair:dates`) exists and is the
+  documented tool; for this production run the operator-executed-SQL path was chosen
+  deliberately, per the team rule that only the operator writes to the production database.
+  The CLI's predicate and the SQL used the identical candidate criteria.
+- **Known, documented limitation:** the 14 corrected articles keep their wrong
+  "Date publishing" in Bubble Live (create-only sync) until the PATCH follow-up ticket
+  noted in NEWS-21 exists. Supabase ordering, date filters and retention are correct as of
+  this repair.
