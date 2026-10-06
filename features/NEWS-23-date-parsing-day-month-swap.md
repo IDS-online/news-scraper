@@ -2,9 +2,10 @@
 
 ## Status: Planned
 **Created:** 2026-10-05
-**Last Updated:** 2026-10-06 (adversarial review round: repair heuristic made conservative,
-weekday-prefix and machine-format-ordering traps pinned, relative-dates premise corrected,
-blast radius completed)
+**Last Updated:** 2026-10-06 (review round 3: auto-repair branch proven mathematically dead —
+repair is now fully manual-approve; date-range, multi-date and English-month-token edge cases
+pinned; round 2: repair made conservative, weekday-prefix and machine-format-ordering traps,
+relative-dates premise, blast radius)
 **Claimed via:** GitHub Issue #28
 
 ## Dependencies
@@ -96,14 +97,21 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
 - [ ] A regression test reproduces the production case verbatim: a date cell of `11.08.2026`
       on an HTML fixture results in a stored `published_at` of August 11 — the exact swap this
       ticket exists for.
-- [ ] **Repair of stored data — deliberately conservative:** a one-off, dry-run-by-default
-      script (or documented SQL, decided in `/architecture`) identifies candidates among
-      articles of **HTML sources with a `selector_date`** whose `created_at` predates the fix
-      deploy and whose `published_at` lies in the future relative to `created_at`. Candidates
-      whose **swapped** reading has day > 12 may be auto-corrected with `--apply`; candidates
-      with day ≤ 12 in the swapped reading are **report-only** (manual approval per row) — a
-      genuine future-dated announcement is indistinguishable from a swap there, and the script
-      must never "correct" a correct date. Nothing is deleted; rows are corrected in place.
+- [ ] **Repair of stored data — report-only, every correction manually approved (review
+      round 3).** A one-off, dry-run-by-default script (or documented SQL, decided in
+      `/architecture`) identifies candidates among articles of **HTML sources with a
+      `selector_date`** whose `created_at` predates the fix deploy and whose `published_at`
+      lies in the future relative to `created_at`, and prints each with both readings
+      (stored / swapped). There is **no automatic-correction branch at all** — round 3 proved
+      the earlier "swapped day > 12 may be auto-corrected" rule mathematically dead: a genuine
+      V8/chrono-en swap stores month = original day (≤ 12, else the parse had failed) and
+      day = original month (≤ 12 by definition), so **every** real swap victim has a swapped
+      reading with day ≤ 12 — the auto branch could never match a single genuine case. And no
+      `created_at`-window heuristic can replace it: a genuine future-dated announcement
+      (`08.10.`, scraped 05.10.) and a swap (`10.08.` misread) produce identical stored
+      values, indistinguishable without the raw date string — which is not stored. With the
+      affected volume being a handful of rows, per-row human approval is cheap and the only
+      correct option. Nothing is deleted; approved rows are corrected in place.
 - [ ] **Documented dark figure:** swapped dates that happen to land in the past (e.g.
       `03.04.2026` read as March 4th) are **not identifiable at all** — the raw date string is
       stored nowhere (`articles` has no raw-date column), so no query can tell them from
@@ -122,8 +130,17 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
 - `13.13.2026` or other nonsense: parse fails → fallback to scrape timestamp (today's
   behavior), no crash.
 - A genuinely future-dated article (source pre-publishes an event announcement): protected by
-  the conservative repair rule above — day ≤ 12 candidates are never auto-swapped, day > 12
-  swaps are impossible dates and the string would not have parsed in the first place.
+  the repair rule above — nothing is ever swapped automatically; the human approving the row
+  sees both readings and the article title/URL to judge.
+- **Date ranges** (event/trade-fair announcements): verified 2026-10-06 — `11.–13.08.2026`
+  (dash forms) parses to the range's **end** date, `11. bis 13. August 2026` to its **start**.
+  Required: a range always yields a date *within* the range (never a swap, never the silent
+  scrape-timestamp); which endpoint wins is implementation-defined and documented, not worth
+  preprocessing machinery.
+- **Two dates in one string** (`Veröffentlicht am 11.08.2026 | Aktualisiert am 12.08.2026`):
+  the first full-date match wins — in the common German layout that is the publish date.
+  Documented caveat: a source leading with its update date would win instead; acceptable, no
+  keyword heuristics.
 - `11.08.2026 – 14:30 Uhr` (dash between date and time): the date parses correctly, the time
   component is dropped (implicit noon) — acceptable, documented, no fix required.
 - Sources with `language != de` whose pages still show German dates (and vice versa): the fix
@@ -142,6 +159,16 @@ Wrong order in the news feed, wrong "Date publishing" in Bubble, distorted reten
   `Mon, 11 Aug 2026 10:30:00 GMT` → today). Order: strict ISO/RFC 822 detection first,
   `chrono.de` for the remainder, no native-`Date` fallback for day-first-shaped numeric
   strings (see acceptance criteria).
+- **Guarded English fallback for month-name tokens only (review round 3):** German pages
+  rendered by English CMS templates emit `11 Oct 2026` / `11 Dec 2026` — `chrono.de` returns
+  null on these while English chrono parses them correctly (verified 2026-10-06; conversely
+  `11. Okt. 2026` / `11. Dez. 2026` only parse in `de`). After a `chrono.de` miss, English
+  chrono may run **only for strings containing an alphabetic month token — never for purely
+  numeric strings**, where the English parser would reintroduce the very swap this ticket
+  fixes.
+- **Deterministic tests:** the parse function accepts an injectable reference time
+  (`refDate`), so relative-expression tests (`vor 2 Stunden`) assert fixed outputs instead of
+  racing the wall clock.
 - No schema change, no new environment variables, no per-source configuration.
 - New logic under `src/lib/` arrives with tests (project rule); the CI gate
   (`lint && typecheck && test && build`) must stay green.
