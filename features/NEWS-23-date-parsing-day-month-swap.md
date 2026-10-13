@@ -705,3 +705,34 @@ tests (total suite 405 → 413):
   "Date publishing" in Bubble Live (create-only sync) until the PATCH follow-up ticket
   noted in NEWS-21 exists. Supabase ordering, date filters and retention are correct as of
   this repair.
+
+### Addendum — the dark figure turned out findable after all (2026-10-07)
+
+The documented dark figure (swaps landing in the past are unidentifiable from the date
+fields) surfaced in production the day after deploy: an article published 01.10. showed
+"January 10" in Bubble — scraped pre-fix, its swapped value lay in the past, invisible to
+the future-date net. The accepted-as-unfindable class was then recovered by a better
+method than the one the spec had ruled on: **re-fetching every pre-fix article page and
+re-reading its date with the fixed parser**, turning the missing raw string into ground
+truth from the source itself.
+
+- **Sweep scope:** every pre-fix article of the three `selector_date` HTML sources (ZWP,
+  ZM-online, Haufe) from a full table export — each page fetched read-only, its
+  `datePublished` compared against the stored day.
+- **Result:** ~90 confirmed correct (including the first 14 repairs), **53 deviations
+  corrected** — each approved by the operator via the evidence-annotated SQL (page value
+  quoted per row, single-row guarded updates) and executed by the operator. 2 pages were
+  deleted upstream (404, one a source-side lorem-ipsum test article) and stay unverified.
+- **Notable:** Haufe had carried swaps since **2012–2024** (e.g. stored 04.06.2012, page
+  says 04.04. read day-first) — past-dated from day one and structurally invisible until
+  the page sweep. Three further deviations were source-side republications, not swaps;
+  the page value was adopted as truth.
+- **Bubble:** after the corrections the operator wiped Bubble Live and re-synced in full.
+  Verified afterwards: 258 records, 0 without picture, **0 future-dated**, spot check
+  confirms the triggering article now reads 2026-10-01 — matching its source page. The
+  earlier Bubble limitation note is thereby resolved for dates (the full re-sync carried
+  the corrected values); it still applies to any future in-place corrections until the
+  PATCH ticket exists.
+- **Lesson recorded:** "report-only because unfindable" was a spec decision made before a
+  cheaper ground-truth source (the live page) was considered. Future repair tickets should
+  weigh re-fetching the source before accepting a dark figure.
